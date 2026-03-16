@@ -1,0 +1,2 @@
+[console_scripts]
+seo-gen = seo_gen.main:app

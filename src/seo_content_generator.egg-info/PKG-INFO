@@ -1,0 +1,355 @@
+Metadata-Version: 2.4
+Name: seo-content-generator
+Version: 2.0.0
+Summary: AI-powered SEO content generator with ASG knowledge base, content classification, and WordPress integration
+Author-email: ASG <contact@asgdropshipping.com>
+License: MIT
+Project-URL: Homepage, https://github.com/asgdropshipping/seo-content-generator
+Project-URL: Repository, https://github.com/asgdropshipping/seo-content-generator
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: openai>=1.0.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pydantic-settings>=2.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: openpyxl>=3.1.0
+Requires-Dist: beautifulsoup4>=4.12.0
+Requires-Dist: markdownify>=0.11.0
+Requires-Dist: aiohttp>=3.9.0
+Requires-Dist: typer>=0.9.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: loguru>=0.7.0
+Requires-Dist: customtkinter>=5.0.0
+Provides-Extra: feishu
+Requires-Dist: lark-oapi>=1.2.0; extra == "feishu"
+Provides-Extra: google-drive
+Requires-Dist: google-api-python-client>=2.0.0; extra == "google-drive"
+Requires-Dist: google-auth-oauthlib>=1.0.0; extra == "google-drive"
+Requires-Dist: google-auth-httplib2>=0.1.0; extra == "google-drive"
+Provides-Extra: all
+Requires-Dist: seo-content-generator[feishu,google-drive]; extra == "all"
+
+# SEO Content Generator
+
+> AI-powered SEO content generation system with WordPress integration
+
+基于 n8n 工作流的本地化实现，使用第三方中转 API 生成 SEO 优化的 WordPress 文章。
+
+## 功能特性
+
+- ✅ **Google SERP 分析** - 分析搜索结果、PAA、搜索意图
+- ✅ **AI 内容生成** - 基于 5 个前置条件生成高质量文章
+- ✅ **质量检测循环** - 自动检测质量并重新生成
+- ✅ **AI 配图生成** - 自动生成封面和内容配图
+- ✅ **WordPress 发布** - 自动发布到 WordPress 站点
+- ✅ **飞书集成** - 读取关键词并更新状态（可选）
+- ✅ **三种文章类型** - 分享型、问答型、顶梁柱型
+
+## 快速开始
+
+### 🚀 一键启动（推荐）- 自动安装所有依赖
+
+#### Windows
+双击 `一键启动-Windows.bat` 即可
+
+- ✅ 自动检测并安装 Python
+- ✅ 自动安装所有依赖（pip、Playwright、Chromium）
+- ✅ 自动创建虚拟环境
+- ✅ 安装完成后自动启动 GUI
+
+#### Mac
+双击 `一键启动-Mac.command` 即可
+
+- ✅ 自动检测并安装 Python 3
+- ✅ 自动安装所有依赖
+- ✅ 自动创建虚拟环境
+- ✅ 安装完成后自动启动 GUI
+
+> 如果提示"无法打开"，右键点击 → "打开"，或在终端运行：
+> ```bash
+> chmod +x 一键启动-Mac.command
+> ./一键启动-Mac.command
+> ```
+
+**详细说明**: [一键启动使用说明.md](一键启动使用说明.md)
+
+### 方式一：GUI 图形界面（依赖已安装时使用）
+
+#### Windows
+双击 `启动GUI.bat` 即可启动
+
+#### Mac
+双击 `启动GUI-Mac.command` 即可启动
+
+#### Linux
+```bash
+./启动GUI.sh
+```
+
+#### 创建 Mac 应用程序
+如需创建真正的 .app 应用程序，请参阅 [创建Mac应用.md](创建Mac应用.md)
+
+### 方式一：Docker（推荐）
+
+```bash
+# 1. 克隆项目
+git clone <repository>
+cd seo-content-generator
+
+# 2. 复制并编辑配置文件
+cp .env.example .env
+# 编辑 .env 文件，填写 API 密钥
+
+# 3. 构建并运行
+docker-compose up --build
+
+# 4. 执行命令
+docker-compose run seo-gen seo-gen init
+docker-compose run seo-gen seo-gen generate "drop shipping" --slug how-to-drop-shipping
+```
+
+### 方式二：本地安装
+
+```bash
+# 1. 克隆项目
+git clone <repository>
+cd seo-content-generator
+
+# 2. 创建虚拟环境
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 3. 安装依赖
+pip install -e .
+
+# 4. 初始化配置
+seo-gen init
+
+# 5. 编辑 .env 文件
+nano .env
+
+# 6. 生成文章
+seo-gen generate "drop shipping" --slug how-to-drop-shipping
+seo-gen generate-advanced "dropshipping automation"
+```
+
+## 配置说明
+
+### 环境变量
+
+编辑 `.env` 文件，配置以下选项：
+
+```bash
+# ==================== 第三方中转 API ====================
+OPENAI_API_BASE=https://your-api-endpoint.com/v1
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=gpt-4o-mini
+
+# ==================== WordPress ====================
+WORDPRESS_SITE_URL=https://your-site.com
+WORDPRESS_USERNAME=your-username
+WORDPRESS_APP_PASSWORD=your-app-password
+
+# ==================== Google SERP API (可选) ====================
+GOOGLE_SEARCH_API_KEY=your-google-api-key
+GOOGLE_SEARCH_ENGINE_ID=your-search-engine-id
+
+# ==================== 飞书集成 (可选) ====================
+FEISHU_APP_ID=your-feishu-app-id
+FEISHU_APP_SECRET=your-feishu-app-secret
+FEISHU_BITABLE_APP_TOKEN=your-bitable-token
+FEISHU_BITABLE_TABLE_ID=your-table-id
+```
+
+### 知识库配置
+
+将 5 个前置条件文件放在 `config/knowledge/` 目录：
+
+- `janson_jieshao.txt` - 站长介绍
+- `kehuhuaxiang.txt` - 客户画像
+- `qiyejieshao.txt` - 企业介绍
+- `yewuliucheng.txt` - 业务流程
+- `xiezuojianyi.txt` - 写作建议
+
+## 使用方法
+
+### 单个关键词生成
+
+```bash
+seo-gen generate "drop shipping fulfillment services" \
+  --slug how-to-drop-shipping-fulfillment-services \
+  --intent share
+```
+
+### 批量生成
+
+从 Excel 文件读取关键词列表：
+
+```bash
+seo-gen batch keywords.xlsx
+```
+
+Excel 文件格式：
+
+| 关键词 | slug | 搜索意图 |
+|--------|------|----------|
+| drop shipping | how-to-drop-shipping | share |
+| best dropshipping sites | best-dropshipping-sites | qa |
+
+### 选项
+
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `--slug, -s` | URL slug | 必填 |
+| `--intent, -i` | 搜索意图 (share/qa/pillar) | share |
+| `--skip-images` | 跳过图片生成 | false |
+| `--skip-wordpress` | 跳过 WordPress 发布 | false |
+| `--output, -o` | 输出目录 | outputs/ |
+
+### 其他命令
+
+```bash
+# 显示配置
+seo-gen config
+
+# 初始化配置文件
+seo-gen init
+
+# 显示版本
+seo-gen version
+```
+
+## 工作流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     SEO 内容生成工作流                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Step 1: Google SERP 分析                                        │
+│  ├── 获取搜索结果                                                 │
+│  └── AI 分析搜索意图、PAA、竞争对手                                │
+│                                                                  │
+│  Step 2: AI 生成文章内容                                          │
+│  ├── 生成头部 (H1、标题、描述、大纲)                               │
+│  └── 生成 7 个 H2 板块                                            │
+│                                                                  │
+│  Step 3: 质量检测循环                                             │
+│  ├── 检测内容质量                                                 │
+│  ├── 分数 >= 70？→ 继续                                          │
+│  └── 分数 < 70？→ 重新生成                                        │
+│                                                                  │
+│  Step 4: 生成配图                                                 │
+│  ├── 封面图 (16:9)                                               │
+│  └── 7 张内容配图                                                 │
+│                                                                  │
+│  Step 5: 保存 Markdown                                           │
+│  └── 输出到 outputs/ 目录                                         │
+│                                                                  │
+│  Step 6: 发布 WordPress                                          │
+│  ├── 上传图片到媒体库                                             │
+│  └── 创建文章（默认为草稿）                                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## 文章结构
+
+生成的内容包含以下 7 个板块：
+
+1. **H2-1: 基础定义与原理** (600-800字, 5-6个H3)
+   - 基本定义、工作原理、重要性、主要类型、关键要素表格
+
+2. **H2-2: 问题分析与解决方案** (700-900字, 6-8个H3)
+   - 问题背景、详细分析、影响因素、解决策略、成本分析
+
+3. **H2-3: 实施方法与策略** (800-1000字, 6-8个H3)
+   - 策略、技术、优化技巧、工具推荐、实施清单
+
+4. **H2-4: 2026 趋势与前景** (600-800字, 5-7个H3)
+   - 市场趋势数据、新兴技术、行业实践、发展预测
+
+5. **H2-5: 案例研究** (700-900字, 5-6个H3)
+   - 实操经验、应用案例、失败案例、ROI 分析
+
+6. **H2-6: 常见问题** (600-800字, 8-10个Q&A)
+
+7. **H2-7: 总结与行动计划** (400-500字, 4-5个H3)
+   - 核心要点回顾、行动步骤、学习资源推荐
+
+## 项目结构
+
+```
+seo-content-generator/
+├── Dockerfile              # Docker 配置
+├── docker-compose.yml      # Docker Compose 配置
+├── pyproject.toml          # Python 包配置
+├── README.md               # 项目说明
+├── .env.example            # 环境变量模板
+├── src/seo_gen/            # 源代码
+│   ├── __init__.py
+│   ├── main.py             # CLI 入口
+│   ├── config.py           # 配置管理
+│   └── modules/            # 核心模块
+│       ├── llm.py          # LLM 客户端
+│       ├── serp.py         # SERP 分析
+│       ├── content.py      # 内容生成
+│       ├── image.py        # 图片生成
+│       ├── quality.py      # 质量检测
+│       ├── wordpress.py    # WordPress 发布
+│       ├── feishu.py       # 飞书集成
+│       └── knowledge.py    # 知识库管理
+├── config/
+│   └── knowledge/          # 知识库文件
+│       ├── janson_jieshao.txt
+│       ├── kehuhuaxiang.txt
+│       ├── qiyejieshao.txt
+│       ├── yewuliucheng.txt
+│       └── xiezuojianyi.txt
+└── outputs/                # 输出目录
+```
+
+## 依赖要求
+
+- Python 3.11+
+- OpenAI 兼容的 API 端点
+- WordPress 站点（用于发布）
+- Google Search API Key（可选，用于 SERP 分析）
+
+## 常见问题
+
+### Q: 如何获取 WordPress 应用密码？
+
+A: 在 WordPress 后台 → 用户 → 个人资料 → 滚动到底部 → 应用密码 → 创建新密码
+
+### Q: 如何获取 Google Search API Key？
+
+A:
+1. 前往 [Google Cloud Console](https://console.cloud.google.com/)
+2. 创建项目并启用 Custom Search API
+3. 创建 API 密钥
+4. 在 [Google Custom Search](https://cse.google.com/) 创建搜索引擎
+
+### Q: 可以不使用 Docker 吗？
+
+A: 可以，项目支持直接安装到本地 Python 环境，参见"方式二：本地安装"
+
+### Q: 如何自定义知识库内容？
+
+A: 直接编辑 `config/knowledge/` 目录下的文件，内容会自动重新加载
+
+## License
+
+MIT License
+
+---
+
+Made by [ASG](https://asgdropshipping.com)
