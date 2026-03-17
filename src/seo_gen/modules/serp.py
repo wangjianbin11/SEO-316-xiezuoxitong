@@ -4,7 +4,7 @@ SERP 分析模块
 分析 Google 搜索结果、PAA、搜索意图等
 """
 
-from typing import Any, Optional
+from typing import List, Dict, Any, Optional
 
 import httpx
 from loguru import logger
@@ -33,7 +33,7 @@ class SERPAnalyzer:
         """关闭客户端"""
         await self.client.aclose()
 
-    async def _search_google(self, query: str, num: int = 10, start: int = 1) -> list[dict[str, Any]]:
+    async def _search_google(self, query: str, num: int = 10, start: int = 1) -> List[Dict[str, Any]]:
         """
         调用 Google Custom Search API
 
@@ -72,7 +72,7 @@ class SERPAnalyzer:
             logger.error(f"Google 搜索失败 (start={start}): {e}")
             return []
 
-    async def _search_google_multiple_pages(self, query: str, total_results: int = 100) -> list[dict[str, Any]]:
+    async def _search_google_multiple_pages(self, query: str, total_results: int = 100) -> List[Dict[str, Any]]:
         """
         获取多页 Google 搜索结果
 
@@ -106,7 +106,7 @@ class SERPAnalyzer:
         logger.info(f"搜索完成: {query}, 共获取 {len(all_results)} 条结果")
         return all_results[:total_results]  # 确保不超过请求的数量
 
-    def _mock_search_results(self, query: str) -> list[dict[str, Any]]:
+    def _mock_search_results(self, query: str) -> List[Dict[str, Any]]:
         """返回模拟搜索结果（API 未配置时）"""
         return [
             {
@@ -120,8 +120,8 @@ class SERPAnalyzer:
     async def analyze_search_intent(
         self,
         keyword: str,
-        search_results: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+        search_results: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         """
         使用 AI 分析搜索意图
 
@@ -183,7 +183,7 @@ class SERPAnalyzer:
             logger.error(f"搜索意图分析失败: {e}")
             return self._default_analysis(keyword)
 
-    def _default_analysis(self, keyword: str) -> dict[str, Any]:
+    def _default_analysis(self, keyword: str) -> Dict[str, Any]:
         """返回默认分析结果"""
         return {
             "searchIntent": "informational",
@@ -195,13 +195,13 @@ class SERPAnalyzer:
             "contentOpportunities": "基于关键词创建有价值的内容",
         }
 
-    async def analyze(self, keyword: str, total_results: int = 100) -> dict[str, Any]:
+    async def analyze(self, keyword: str, total_results: int = 30) -> Dict[str, Any]:
         """
         完整的 SERP 分析流程
 
         Args:
             keyword: 要分析的关键词
-            total_results: 需要获取的搜索结果总数(默认100条,即10页)
+            total_results: 需要获取的搜索结果总数(默认30条,即3页)
 
         Returns:
             完整的分析结果
@@ -222,7 +222,7 @@ class SERPAnalyzer:
             "totalResults": len(search_results),
         }
 
-    def sync_analyze(self, keyword: str) -> dict[str, Any]:
+    def sync_analyze(self, keyword: str) -> Dict[str, Any]:
         """
         同步版本的分析方法
         """

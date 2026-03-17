@@ -52,6 +52,15 @@ class ASGKnowledgeBase:
         self.faq_matrix_dir = self.knowledge_dir.parent / "asg-faq-matrix-geo_副本"
         self.geo_guide_dir = self.knowledge_dir.parent / "GEO指南_副本"
 
+        # 路径存在性检查（启动时告警，防止silent fail）
+        import logging as _logging
+        for _attr, _path in [
+            ("base_knowledge_dir", self.base_knowledge_dir),
+            ("faq_matrix_dir", self.faq_matrix_dir),
+        ]:
+            if not _path.exists():
+                _logging.warning(f"[ASGKnowledge] 路径不存在: {_attr} = {_path}")
+
         # 缓存
         self._cache: Dict[str, Any] = {}
 
@@ -383,6 +392,36 @@ class ASGKnowledgeBase:
                 context.case_studies,
             ]),
         }
+
+    def get_full_context(self, keyword: str = "") -> str:
+        """
+        BUG-3修复: 获取完整的知识库上下文（用于传递给ContentGenerator）
+
+        Args:
+            keyword: 目标关键词（可选，用于搜索相关FAQ和案例）
+
+        Returns:
+            格式化的完整上下文字符串
+        """
+        if keyword:
+            return self.build_content_prompt_context(keyword)
+        else:
+            # 无关键词时返回基础知识
+            return f"""
+# ASG 企业知识
+
+## Janson 个人介绍
+{self.get_janson_intro() or 'Janson 是 ASG Dropshipping CEO，深耕跨境电商一件代发领域 8 年。'}
+
+## ASG 企业介绍
+{self.get_company_intro() or 'ASG Dropshipping 是一站式供应链与履约服务公司。'}
+
+## 客户画像
+{self.get_customer_persona() or '月销 $3,000-$10,000 的跨境电商创业者'}
+
+## GEO 写作规范
+{self.get_geo_guidelines() or '遵循GEO最佳实践，确保AI引用友好'}
+"""
 
 
 # 全局单例

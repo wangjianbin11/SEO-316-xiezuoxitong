@@ -1,18 +1,17 @@
-"""
-SEO & GEO Skills 模块
+"""SEO & GEO Skills 模块"""
+try:
+    from .seo_content_writer import SEOContentWriter
+except Exception:
+    SEOContentWriter = None
 
-集成 aaron-he-zhu/seo-geo-claude-skills 仓库的技能
-- seo-content-writer: SEO 优化内容写作
-- geo-content-optimizer: AI 搜索引擎优化
-- core-eeat-benchmark: 内容质量评分框架
-"""
+try:
+    from .geo_content_optimizer import GEOContentOptimizer
+except Exception:
+    GEOContentOptimizer = None
 
-from .seo_content_writer import SEOContentWriter
-from .geo_content_optimizer import GEOContentOptimizer
-from .core_eeat import COREEEATChecker
+try:
+    from .core_eeat import COREEEATChecker
+except Exception:
+    COREEEATChecker = None
 
-__all__ = [
-    "SEOContentWriter",
-    "GEOContentOptimizer",
-    "COREEEATChecker",
-]
+__all__ = ["SEOContentWriter", "GEOContentOptimizer", "COREEEATChecker"]

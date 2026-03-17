@@ -14,7 +14,7 @@ GEO 优化的科学原理:
 
 import re
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 from bs4 import BeautifulSoup
 
 from loguru import logger
@@ -39,7 +39,7 @@ class GEOScore:
     structure_clarity_score: float  # 结构清晰度 (20分)
     eeat_signal_score: float  # E-E-A-T信号 (20分)
     schema_coverage_score: float  # Schema覆盖度 (15分)
-    recommendations: list[str]  # 具体改进建议
+    recommendations: List[str]  # 具体改进建议
 
 
 class GEOOptimizer:
@@ -122,6 +122,10 @@ class GEOOptimizer:
         - Author/Person Schema存在 +2分
         """
         content_html = article.get("content", "")
+        # 若顶层content为空（文章刚生成时），从sections拼接
+        if not content_html.strip():
+            sections = article.get("sections", [])
+            content_html = "\n\n".join(s.get("content", "") for s in sections)
         soup = BeautifulSoup(content_html, 'html.parser')
 
         # 1. 答案密度评分
@@ -304,7 +308,7 @@ class GEOOptimizer:
         schema_score: float,
         h2_count: int,
         answer_block_count: int
-    ) -> list[str]:
+    ) -> List[str]:
         """生成改进建议"""
         recommendations = []
 
@@ -332,67 +336,67 @@ class GEOOptimizer:
     async def inject_direct_answer_blocks(self, article: dict, llm_client: Any = None) -> dict:
         """
         为每个H2章节生成并注入直接答案块
-
-        每个直接答案块规格:
-        - 第一句:直接回答H2标题隐含的问题(句式:[主语] [谓语] [关键信息])
-        - 第二句:量化或具体化(包含数字、条件、时间)
-        - 第三句(可选):关键区别或注意事项
-        - 总长度:50-80词(英文)
-        - 必须自成一体:删除前后所有文字后,该块仍然有意义
-        - 禁止使用:代词(it/they/this/that)无清晰指代
-        - 禁止使用:UNCITABLE_PATTERNS 中的任何表达
-
-        HTML格式:
-        <div class="geo-answer-block" itemscope itemtype="https://schema.org/Answer">
-          <p itemprop="text">[直接答案文字]</p>
-        </div>
-
-        注入位置:每个<h2>标签后的第一个<p>标签之前
+        处理 article["sections"] 中每个 section 的 content
         """
         client = llm_client or self.llm_client
         if not client:
             logger.warning("No LLM client available, skipping direct answer block injection")
             return article
 
-        content_html = article.get("content", "")
-        soup = BeautifulSoup(content_html, 'html.parser')
+        sections = article.get("sections", [])
+        if not sections:
+            logger.warning("No sections found in article, skipping direct answer block injection")
+            return article
 
-        # 找到所有H2
-        h2_tags = soup.find_all('h2')
+        for i, section in enumerate(sections):
+            section_title = section.get("sectionTitle", "")
+            section_content = section.get("content", "")
 
-        for h2 in h2_tags:
-            h2_text = h2.get_text().strip()
-
-            # 检查是否已有答案块
-            next_sibling = h2.find_next_sibling()
-            if next_sibling and 'geo-answer-block' in next_sibling.get('class', []):
+            # 跳过已有答案块的章节
+            if 'geo-answer-block' in section_content:
+                logger.debug(f"Section {i+1} already has answer block, skipping")
                 continue
 
             # 生成直接答案块
             try:
-                answer_text = await self._generate_direct_answer(h2_text, client)
+                answer_text = await self._generate_direct_answer(section_title, client)
 
-                # 创建答案块
-                answer_div = soup.new_tag('div', attrs={
-                    'class': 'geo-answer-block',
-                    'itemscope': '',
-                    'itemtype': 'https://schema.org/Answer'
-                })
-                answer_p = soup.new_tag('p', attrs={'itemprop': 'text'})
-                answer_p.string = answer_text
-                answer_div.append(answer_p)
+                # QUALITY-3修复: 升级为 Question+Answer Schema 配对
+                # 将 H2 标题转换为问题格式
+                question_text = section_title
+                if not question_text.endswith('?'):
+                    # 如果不是问句，转换为问句
+                    question_text = f"What about {section_title.lower()}?"
 
-                # 插入到H2后面
-                h2.insert_after(answer_div)
+                answer_block = (
+                    f'<div class="geo-answer-block" itemscope itemtype="https://schema.org/Question">'
+                    f'<meta itemprop="name" content="{question_text}"/>'
+                    f'<div itemscope itemprop="suggestedAnswer" itemtype="https://schema.org/Answer">'
+                    f'<meta itemprop="upvoteCount" content="1"/>'
+                    f'<div itemprop="text">'
+                    f'<p>{answer_text}</p>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>\n\n'
+                )
 
-                logger.debug(f"Injected answer block for: {h2_text[:50]}")
+                # 注入到 section content 开头
+                sections[i]["content"] = answer_block + section_content
+                logger.debug(f"Injected answer block for section: {section_title[:50]}")
 
             except Exception as e:
-                logger.error(f"Failed to generate answer block for '{h2_text}': {e}")
+                logger.error(f"Failed to generate answer block for '{section_title}': {e}")
                 continue
 
-        # 更新article
-        article["content"] = str(soup)
+        article["sections"] = sections
+
+        # 同时更新顶层 content 字段（如果存在）
+        if "content" in article:
+            combined = "\n\n".join(
+                s.get("content", "") for s in sections
+            )
+            article["content"] = combined
+
         return article
 
     async def _generate_direct_answer(self, heading: str, llm_client: Any) -> str:
@@ -524,9 +528,10 @@ Return the rewritten text."""
         article["content"] = content
         return article
 
-    def optimize_faq_for_ai(self, faq_list: list[dict]) -> list[dict]:
+    def optimize_faq_for_ai(self, faq_list: List[Dict], llm_client: Any = None) -> List[Dict]:
         """
         优化FAQ使其符合AI引用标准
+        QUALITY-2修复: 激活真正的LLM重写
 
         每个FAQ答案必须满足:
         1. 第一句直接回答问题(Yes/No/The answer is/[直接事实])
@@ -544,6 +549,9 @@ Return the rewritten text."""
 
         每篇文章FAQ数量:6-8个(不少于6,不多于8)
         """
+        import asyncio
+
+        client = llm_client or self.llm_client
         optimized_faq = []
 
         for faq in faq_list[:8]:  # 最多8个
@@ -562,7 +570,7 @@ Return the rewritten text."""
                 for phrase in ['as mentioned', 'above', 'previously', 'earlier', 'as we']
             )
 
-            # 如果不符合标准,标记需要优化
+            # 如果不符合标准,进行LLM重写
             needs_optimization = (
                 word_count < 60 or
                 word_count > 120 or
@@ -570,6 +578,19 @@ Return the rewritten text."""
                 not self_contained
             )
 
+            if needs_optimization and client:
+                try:
+                    # QUALITY-2修复: 调用LLM进行真正的重写
+                    rewritten_answer = asyncio.get_event_loop().run_until_complete(
+                        self._rewrite_faq_answer(question, answer, client)
+                    )
+                    if rewritten_answer:
+                        answer = rewritten_answer
+                        word_count = len(answer.split())
+                except Exception as e:
+                    logger.warning(f"FAQ rewrite failed for '{question[:30]}...': {e}")
+
+            faq['answer'] = answer
             faq['needs_optimization'] = needs_optimization
             faq['word_count'] = word_count
             faq['has_data'] = has_data
@@ -584,3 +605,33 @@ Return the rewritten text."""
             optimized_faq = optimized_faq[:8]
 
         return optimized_faq
+
+    async def _rewrite_faq_answer(self, question: str, original_answer: str, llm_client: Any) -> str:
+        """QUALITY-2修复: 使用LLM重写FAQ答案"""
+        prompt = f"""Rewrite this FAQ answer to be AI-citation optimized:
+
+Question: {question}
+Original Answer: {original_answer}
+
+Requirements:
+1. First sentence: Direct answer (Yes/No/The answer is X/A [noun] is Y)
+2. Word count: 65-100 words (strict limit)
+3. Self-contained: Must make sense WITHOUT the question
+4. Include at least ONE specific number, percentage, or timeframe
+5. NO cross-references like "as mentioned above" or "previously"
+6. NO filler phrases like "It's worth noting" or "In today's landscape"
+7. Optional: End with ONE soft CTA about ASG (not required)
+
+Return ONLY the rewritten answer, no explanation."""
+
+        try:
+            messages = [
+                {"role": "system", "content": "You are an expert at writing AI-citation optimized FAQ answers."},
+                {"role": "user", "content": prompt}
+            ]
+
+            response = await llm_client.chat(messages, temperature=0.5)
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Failed to rewrite FAQ: {e}")
+            return original_answer

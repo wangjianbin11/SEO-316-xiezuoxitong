@@ -9,7 +9,7 @@ import re
 import asyncio
 import random
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 from urllib.parse import urlparse
 
 import httpx
@@ -24,8 +24,8 @@ class CompetitorContent:
     domain: str
     title: str
     h1: str
-    h2_list: list[str]  # 所有H2标题(按顺序)
-    h3_list: list[str]  # 所有H3标题
+    h2_list: List[str]  # 所有H2标题(按顺序)
+    h3_list: List[str]  # 所有H3标题
     word_count: int  # 正文字数(不含导航/页脚)
     full_text: str  # 清洁后的完整正文
     has_faq_section: bool  # 是否有FAQ章节
@@ -52,10 +52,10 @@ class CompetitorAnalysis:
     target_word_count: int  # 建议目标字数 = avg_top3 × 1.15 取整到最近500
     dominant_format: str  # listicle/how-to/guide/comparison
     dominant_content_type: str  # blog_post/landing_page/tool
-    all_h2_topics: list[str]  # 竞品覆盖的所有H2话题(去重合并)
-    uncovered_topics: list[str]  # 无竞品覆盖的话题(来自PAA)
+    all_h2_topics: List[str]  # 竞品覆盖的所有H2话题(去重合并)
+    uncovered_topics: List[str]  # 无竞品覆盖的话题(来自PAA)
     weakness_summary: str  # LLM生成的竞品弱点总结
-    competitors: list[CompetitorContent]
+    competitors: List[CompetitorContent]
 
 
 class CompetitorScraper:
@@ -88,9 +88,9 @@ class CompetitorScraper:
 
     async def scrape_top_results(
         self,
-        urls: list[str],
+        urls: List[str],
         max_count: int = 5
-    ) -> list[CompetitorContent]:
+    ) -> List[CompetitorContent]:
         """
         爬取竞品全文
 
@@ -306,7 +306,7 @@ class CompetitorScraper:
             logger.error(f"Error extracting content from {url}: {e}")
             return self._create_failed_content(url, str(e))
 
-    def _detect_faq(self, content, h2_list: list[str], h3_list: list[str]) -> bool:
+    def _detect_faq(self, content, h2_list: List[str], h3_list: List[str]) -> bool:
         """检测是否有FAQ章节"""
         # 检查标题
         faq_keywords = ['faq', 'frequently', 'questions', 'q&a', 'q & a']
@@ -371,8 +371,8 @@ class CompetitorScraper:
     async def analyze_competitors(
         self,
         keyword: str,
-        urls: list[str],
-        paa_questions: list[str],
+        urls: List[str],
+        paa_questions: List[str],
         llm_client: Any = None
     ) -> CompetitorAnalysis:
         """
@@ -487,7 +487,7 @@ class CompetitorScraper:
 
         return similarity > 0.4
 
-    def _determine_dominant_format(self, competitors: list[CompetitorContent]) -> str:
+    def _determine_dominant_format(self, competitors: List[CompetitorContent]) -> str:
         """判断主导格式"""
         format_scores = {
             'listicle': 0,
@@ -525,8 +525,8 @@ class CompetitorScraper:
 
     async def _generate_weakness_summary(
         self,
-        competitors: list[CompetitorContent],
-        h2_topics: list[str],
+        competitors: List[CompetitorContent],
+        h2_topics: List[str],
         llm_client: Any
     ) -> str:
         """使用LLM生成竞品弱点总结"""

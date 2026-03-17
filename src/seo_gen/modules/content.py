@@ -2,7 +2,7 @@
 内容生成模块 v2.0
 
 根据 SERP 分析和知识库生成 SEO 优化的文章内容
-- 纯英文输出，2500-3000 字符控制
+- 纯英文输出，2500-3000 词（words）控制
 - 支持 6-9 个章节的动态生成
 - E-E-A-T 优化
 - WordPress 发布格式
@@ -28,11 +28,13 @@ ARTICLE_TYPE_TEMPLATES = {
     "share": "ASG-SEO文章写作提示词-分享型.md",
 }
 
-# ASG案例库路径（修正路径）
-ASG_CASE_LIBRARY_PATH = Path("/Users/apple/Documents/新的网站内容生成/asg-faq-matrix-geo_副本")
+# ASG案例库路径（使用相对路径，避免硬编码）
+_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+ASG_CASE_LIBRARY_PATH = _PROJECT_ROOT / "asg-faq-matrix-geo_副本"
 
 # 备选案例库路径
-ASG_CASE_LIBRARY_ALT_PATH = Path("/Users/apple/Documents/cc-工作流/asg-faq-matrix-geo")
+ASG_CASE_LIBRARY_ALT_PATH = _PROJECT_ROOT / "asg-faq-matrix-geo"
+ASG_CASE_LIBRARY_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "knowledge" / "case_studies"
 
 # 文章类型对应的目标字数
 ARTICLE_TYPE_WORD_COUNTS = {
@@ -49,6 +51,29 @@ ARTICLE_TYPE_SECTIONS = {
 }
 
 # GEO 写作规则（AI引用优化）
+# QUALITY-1修复: GEO核心规则前置版本（3条最关键规则）
+GEO_CRITICAL_RULES = """
+⚠️ ⚠️ ⚠️ CRITICAL GEO RULES - THESE ARE NON-NEGOTIABLE ⚠️ ⚠️ ⚠️
+
+1. DIRECT ANSWER BLOCK (Every H2 MUST have this as first paragraph):
+   - Format: <div class="geo-answer-block"><p>[40-80 word self-contained answer]</p></div>
+   - The answer MUST make sense if read ALONE, without any other context
+   - NO pronouns without clear antecedents (it/they/this must have explicit referents)
+   - NO filler phrases like "It's important to note" or "In today's landscape"
+
+2. DATA-FIRST PRINCIPLE (Minimum 2 specific numbers per 500 words):
+   - Use ASG proprietary data: "5M+ orders processed", "2,300+ factory partners", "200+ staff"
+   - Replace vague words (many/often/quickly) with specific numbers
+   - Every claim needs concrete backing
+
+3. STANDALONE SECTIONS (Each H2 section must be independently readable):
+   - Do NOT use cross-references like "as mentioned above" or "as discussed earlier"
+   - Re-establish key context at the start of each section
+   - AI search engines may quote ANY section in isolation
+
+THESE RULES SUPERSEDE ALL OTHER WRITING GUIDELINES.
+"""
+
 GEO_WRITING_RULES = """
 ## 🎯 GEO写作规则（AI引用优化 — 最高优先级）
 
@@ -371,9 +396,11 @@ Primary Intent: {serp_analysis.get('primaryIntent', 'share')}
         serp_analysis: dict[str, Any],
         structure_analysis: Optional[dict[str, Any]] = None,
         article_type: Optional[str] = None,
+        competitor_context: str = "",   # 新增：竞品分析上下文
+        asg_context: str = "",         # BUG-3修复：ASG知识库上下文
     ) -> dict[str, Any]:
         """
-        生成完整文章（2500-3000字符，纯英文，动态章节）
+        生成完整文章（2500-3000词，纯英文，动态章节）
 
         Args:
             keyword: 关键词
@@ -412,14 +439,25 @@ Primary Intent: {serp_analysis.get('primaryIntent', 'share')}
         target_sections = max(6, min(9, target_sections))
 
         # 根据章节数计算每个章节的字数
-        total_words = 2800  # 总字数目标
-        intro_words = 200    # 引言字数
-        words_per_section = (total_words - intro_words) // target_sections
+        # 单位：words（词），英文2800词≈17,000字符，这才是真正的博客文章长度
+        target_word_count = 2800
+        intro_words = 200
+        words_per_section = (target_word_count - intro_words) // target_sections
 
+        # 使用大纲中的章节标题（如果有）
+        outline_section_titles = structure_analysis.get("outlineSectionTitles", []) if structure_analysis else []
+        outline_hint = ""
+        if outline_section_titles:
+            outline_hint = f"\n\nPRE-GENERATED OUTLINE SECTIONS (use these as your H2 titles, adjust wording naturally):\n" + "\n".join(f"- {t}" for t in outline_section_titles)
+
+        # BUG-3修复: 在 System Prompt 最前面注入 ASG Knowledge Base Context
+        # QUALITY-1修复: GEO核心规则放在最前面，确保LLM优先遵守
         messages = [
             {
                 "role": "system",
-                "content": f"""You are Janson, CEO of ASG dropshipping, an expert in cross-border e-commerce.
+                "content": f"""{GEO_CRITICAL_RULES}
+
+You are Janson, CEO of ASG dropshipping, an expert in cross-border e-commerce.
 
 WRITING STYLE:
 - First-person perspective with real experience and insights
@@ -427,6 +465,10 @@ WRITING STYLE:
 - Casual but professional tone
 - No filler, every sentence adds value
 - Follow Backlinko style
+
+# === ASG KNOWLEDGE BASE CONTEXT (USE THIS AS PRIMARY SOURCE) ===
+{asg_context}
+# === END OF ASG CONTEXT ===
 
 {context}
 
@@ -578,7 +620,8 @@ IMPORTANT - YEAR REQUIREMENT:
 - Title examples WITHOUT year: "Complete Guide to Dropshipping", "How to Start an Online Store"
 - Include up-to-date 2026 statistics and trends where applicable
 
-WORD COUNT: ~2800 characters total (2500-3000 range)
+WORD COUNT: 2500-3000 WORDS total (words NOT characters; approximately 15,000-18,000 characters)
+Each main section: 300-400 words. Introduction: 150-200 words.
 
 SECTION TITLE GUIDELINES - AVOID TEMPLATES:
 ❌ Don't use: "Understanding X", "Why X Matters", "Introduction to X"
@@ -587,6 +630,7 @@ SECTION TITLE GUIDELINES - AVOID TEMPLATES:
    - "The Real Cost of Bad Quality (It's Higher Than You Think)"
    - "3 Pre-shipment Checks That Save Thousands in Returns"
    - "How Top Sellers Handle This Without Breaking a Sweat"
+{outline_hint}
 
 NATURAL STRUCTURE PRINCIPLES:
 - Vary section length by importance (300-400 words each)
@@ -649,7 +693,15 @@ OUTPUT FORMAT (JSON):
   "actualSectionCount": {target_sections},
   "totalWordCount": 2800,
   "imageCount": 4,
-  "externalLinkCount": 5
+  "externalLinkCount": 5,
+  "faqSection": {{
+    "items": [
+      {{
+        "question": "完整问题（来自Google PAA或用户常见疑问）",
+        "answer": "直接回答（65-100词，第一句直接答，包含具体数字，自成一体）"
+      }}
+    ]
+  }}
 }}
 
 SECTION STRUCTURE (NATURAL, NOT FIXED):
@@ -667,7 +719,14 @@ REQUIREMENTS:
 - CRITICAL: Add a BLANK LINE after EVERY paragraph (double newline \\n\\n)
 - CRITICAL: If introduction has 2 paragraphs, separate with BLANK LINE
 - Include comparison tables where relevant
-- Use --- separator between major sections"""
+- Use --- separator between major sections
+
+18. FAQ SECTION（必须）- 生成6-8个FAQ：
+    - 来源：Google PAA问题优先，然后是竞品FAQ、行业常见问题
+    - 每个答案65-100词（英文）
+    - 第一句直接回答（Yes/No/具体数字/核心事实）
+    - 包含至少1个具体数字，自成一体不引用"上文"
+    - JSON中使用faqSection.items字段"""
             },
             {
                 "role": "user",
@@ -751,7 +810,9 @@ IMPORTANT - Dynamic Structure:
 - Vary section lengths - some can be 350 words, others 400+ based on importance
 - Use natural H2 titles, avoid template phrases like "Understanding X" or "Why X Matters"
 
-Remember: The goal is to write like a real expert (Janson), not follow a template."""
+Remember: The goal is to write like a real expert (Janson), not follow a template.
+
+{competitor_context if competitor_context else ""}"""
             }
         ]
 
@@ -900,7 +961,14 @@ Each image should:
         html_parts.append('<ol>')
         for section in article.get("sections", []):
             title = section.get("sectionTitle", "")
-            slug = title.lower().replace(" ", "-").replace("?", "").replace(",", "")
+            # WP-1修复: 完整的特殊字符处理（URL安全slug）
+            import re as _re
+            slug = title.lower()
+            # 移除特殊字符，只保留字母数字和连字符
+            slug = _re.sub(r'[^a-z0-9\s-]', '', slug)
+            # 空格转连字符，合并多个连字符
+            slug = _re.sub(r'[\s_]+', '-', slug)
+            slug = _re.sub(r'-+', '-', slug).strip('-')
             html_parts.append(f'<li><a href="#{slug}">{title}</a></li>')
         html_parts.append('</ol>')
         html_parts.append('</div>')
@@ -913,7 +981,14 @@ Each image should:
             idx = section.get("sectionIndex", 0)
             title = section.get("sectionTitle", "")
             content = section.get("content", "")
-            slug = title.lower().replace(" ", "-").replace("?", "").replace(",", "")
+            # WP-1修复: 使用与TOC一致的slug生成逻辑
+            import re as _re
+            slug = title.lower()
+            # 移除特殊字符，只保留字母数字和连字符
+            slug = _re.sub(r'[^a-z0-9\s-]', '', slug)
+            # 空格转连字符，合并多个连字符
+            slug = _re.sub(r'[\s_]+', '-', slug)
+            slug = _re.sub(r'-+', '-', slug).strip('-')
 
             # Section with anchor and separator
             html_parts.append(f'<h2 id="{slug}">{title}</h2>')
@@ -922,8 +997,10 @@ Each image should:
             # 所有有图片的 section 都在章节标题后立即显示图片
             if section_images and str(idx) in section_images:
                 html_parts.append(f'<figure class="section-image" style="margin: 1em 0 2em 0;">')
-                # 使用具体的描述性 alt text，不使用通用描述
-                alt_text = f"{title} - Professional Guide"
+                # 优先使用LLM生成的具体alt text，回退到section标题
+                _section_image_meta = section.get("image", {})
+                alt_text = _section_image_meta.get("alt", "") or f"{title} - {keyword or 'dropshipping'}"
+                alt_text = alt_text.replace('"', "'").strip()
                 html_parts.append(f'<img src="{section_images[str(idx)]}" alt="{alt_text}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;"/>')
                 html_parts.append(f'<figcaption style="text-align: center; color: #666; font-size: 0.9em; margin-top: 0.5em;">{title}</figcaption>')
                 html_parts.append(f'</figure>')

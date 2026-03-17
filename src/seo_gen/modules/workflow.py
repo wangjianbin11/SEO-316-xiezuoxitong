@@ -89,7 +89,7 @@ class WorkflowOrchestrator:
         confirmed_article_type: Optional[str] = None,  # 新增:用户确认的文章类型
         resume: bool = True,  # 新增:是否从断点恢复
         use_checkpoint: bool = True,  # 新增:是否使用检查点
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """
         执行完整的高级工作流
 
@@ -237,25 +237,65 @@ class WorkflowOrchestrator:
             serp_data["additional_searches"] = all_serp_data[1:] if len(all_serp_data) > 1 else []
 
             result["stages"]["serp_analysis"] = {"status": "completed", "data": serp_data}
-            self._log(f"✓ 搜索意图: {serp_data.get('primaryIntent', 'N/A')}")
+            # BUG-1修复: primaryIntent 在 serpAnalysis 子层
+            primary_intent = serp_data.get("serpAnalysis", {}).get("primaryIntent", "N/A")
+            self._log(f"✓ 搜索意图: {primary_intent}")
             self._update_step(1, "completed", "分析 SERP - 完成", 0.12)
+
+            # 1.1.3 关键词真实数据（DataForSEO）
+            if self.keyword_data_client.enabled:
+                try:
+                    _kw_list = await self.keyword_data_client.get_keyword_metrics([keyword])
+                    if _kw_list:
+                        _m = _kw_list[0]
+                        result["keyword_metrics"] = {
+                            "monthly_volume": _m.monthly_volume,
+                            "kd_score": _m.kd_score,
+                            "cpc": _m.cpc,
+                            "competition": _m.competition_level,
+                            "source": _m.data_source,
+                        }
+                        self._log(f"✓ 关键词数据: 搜索量={_m.monthly_volume}/月 KD={_m.kd_score:.0f} CPC=${_m.cpc:.2f}")
+                except Exception as _e:
+                    self._log(f"  ℹ️  DataForSEO获取失败（不影响流程）: {_e}")
+            else:
+                self._log("  ℹ️  DataForSEO未配置，跳过关键词数据")
 
             # 1.1.5 竞争对手内容分析（新增）
             self._log(f"[1.5/11] 正在分析竞争对手内容...")
-            top_urls = [r.get("url") for r in serp_data.get("results", [])[:5] if r.get("url")]
-            competitor_analysis = await self.competitor_scraper.analyze_competitors(top_urls)
-            result["stages"]["competitor_analysis"] = {
-                "status": "completed",
-                "data": {
-                    "target_word_count": competitor_analysis.target_word_count,
-                    "dominant_format": competitor_analysis.dominant_format,
-                    "content_gaps": competitor_analysis.content_gaps[:3],  # 只保存前3个
+            # BUG-1修复: Google Custom Search API 返回的字段是 "searchResults" 不是 "results"，链接字段是 "link" 不是 "url"
+            top_urls = [
+                r.get("link") or r.get("url")
+                for r in serp_data.get("searchResults", [])[:5]
+                if r.get("link") or r.get("url")
+            ]
+            _paa_questions = serp_data.get("serpAnalysis", {}).get("paaQuestions", [])
+            try:
+                competitor_analysis = await self.competitor_scraper.analyze_competitors(
+                    keyword=keyword,
+                    urls=top_urls,
+                    paa_questions=_paa_questions,
+                    llm_client=self.llm_client
+                )
+                result["stages"]["competitor_analysis"] = {
+                    "status": "completed",
+                    "data": {
+                        "target_word_count": competitor_analysis.target_word_count,
+                        "dominant_format": competitor_analysis.dominant_format,
+                        "uncovered_topics": competitor_analysis.uncovered_topics[:3],
+                    }
                 }
-            }
-            self._log(f"✓ 竞争对手分析完成")
-            self._log(f"  目标字数: {competitor_analysis.target_word_count}")
-            self._log(f"  主流格式: {competitor_analysis.dominant_format}")
-            self._log(f"  内容缺口: {len(competitor_analysis.content_gaps)} 个")
+                self._log(f"✓ 竞争对手分析完成")
+                self._log(f"  目标字数: {competitor_analysis.target_word_count}")
+                self._log(f"  主流格式: {competitor_analysis.dominant_format}")
+                self._log(f"  内容缺口: {len(competitor_analysis.uncovered_topics)} 个")
+            except Exception as e:
+                self._log(f"⚠️ 竞争对手分析失败: {e}")
+                competitor_analysis = None
+                result["stages"]["competitor_analysis"] = {
+                    "status": "failed",
+                    "error": str(e)
+                }
 
 
             # 1.2 AI 生成候选标题
@@ -301,8 +341,9 @@ class WorkflowOrchestrator:
 
             # 2.2 SERP 分析文章结构
             self._log(f"[5/9] 正在分析文章结构...")
+            # BUG-1修复: 同样需要 searchResults 字段
             structure_analysis = await self.structure_analyzer.analyze_article_structure(
-                search_results=title_serp_data.get("results", []),
+                search_results=title_serp_data.get("searchResults", []),
                 keyword=keyword,
             )
             result["stages"]["structure_analysis"] = {
@@ -330,6 +371,16 @@ class WorkflowOrchestrator:
             self._log(f"✓ 大纲生成: {outline_sections} 个章节")
             self._update_step(4, "completed", "生成大纲 - 完成", 0.52)
 
+            # 从大纲提取章节标题（传入文章生成，避免双重LLM工作）
+            outline_section_titles = [
+                s.get("sectionTitle", "") for s in outline.get("sections", [])
+                if s.get("sectionTitle")
+            ]
+            if outline_section_titles:
+                # 将大纲章节标题注入structure_analysis，供generate_article使用
+                structure_analysis["outlineSectionTitles"] = outline_section_titles
+                self._log(f"  大纲章节: {', '.join(outline_section_titles[:3])}...")
+
             # 2.4 AI 撰写文章内容（传递结构分析结果以支持动态章节数量）
             self._update_step(5, "running", "撰写文章内容", 0.58)
             self._log(f"[6/11] 正在撰写文章...")
@@ -341,12 +392,37 @@ class WorkflowOrchestrator:
             # 记录使用的文章类型
             self._log(f"  文章类型: {article_type.value}")
 
+            # 构建竞品上下文（之前爬了但没用，现在真正传入）
+            competitor_context = ""
+            if competitor_analysis and competitor_analysis.total_scraped > 0:
+                competitor_context = f"""
+COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
+- 建议目标字数: {competitor_analysis.target_word_count} words (基于前3名平均×1.15)
+- 竞品主流格式: {competitor_analysis.dominant_format}
+- 竞品已覆盖的H2话题 (你必须覆盖这些，且做得更好): {', '.join(competitor_analysis.all_h2_topics[:10])}
+- 竞品未覆盖的话题 (差异化机会，必须包含): {', '.join(competitor_analysis.uncovered_topics[:5])}
+- 竞品弱点: {competitor_analysis.weakness_summary}
+"""
+
+            # BUG-3修复: 获取 ASG Knowledge Base 上下文
+            asg_context = ""
+            if self.asg_knowledge:
+                try:
+                    asg_context = self.asg_knowledge.get_full_context(keyword)
+                    self._log(f"  ✓ ASG知识库上下文已加载 ({len(asg_context)} 字符)")
+                except Exception as _e:
+                    self._log(f"  ⚠ ASG知识库加载失败: {_e}")
+
+            # BUG-2修复: serp_analysis 参数应该传递 serpAnalysis 子层而不是完整的 serp_data
+            serp_analysis_for_content = serp_data.get("serpAnalysis", {})
             article = await self.content_generator.generate_article(
                 keyword=keyword,
                 slug=result["slug"],
-                serp_analysis=serp_data,
+                serp_analysis=serp_analysis_for_content,  # 修复: 只传递 serpAnalysis 子层
                 structure_analysis=structure_analysis,  # 传递结构分析结果
                 article_type=article_type.value,  # 传递文章类型
+                competitor_context=competitor_context,
+                asg_context=asg_context,  # BUG-3修复: 传递ASG知识库上下文
             )
             result["stages"]["content_generation"] = {
                 "status": "completed",
@@ -377,37 +453,58 @@ class WorkflowOrchestrator:
             self._log(f"✓ 质量检测: {score}/100 ({grade})")
             self._update_step(6, "completed", f"质量检测 - {score}/100", 0.85)
 
+            # 2.5.4 禁用词重写（uncitable sentence检测，代码已写但从未调用）
+            self._log(f"[7.2/11] 检测并重写AI无法引用的表达...")
+            try:
+                _full_content_for_rewrite = "\n".join(
+                    s.get("content", "") for s in article.get("sections", [])
+                )
+                _rewritten = await self.geo_optimizer.rewrite_uncitable_sentences(
+                    _full_content_for_rewrite, self.llm_client
+                )
+                if _rewritten != _full_content_for_rewrite:
+                    # BUG-6修复: 将重写后的内容分配回sections
+                    _rewritten_parts = _rewritten.split("\n\n")
+                    for _i, _section in enumerate(article.get("sections", [])):
+                        if _i < len(_rewritten_parts):
+                            article["sections"][_i]["content"] = _rewritten_parts[_i]
+                    self._log("  ✓ 检测到并重写了AI不可引用的表达")
+                else:
+                    self._log("  ✓ 未发现AI不可引用的表达")
+            except Exception as _rewrite_err:
+                self._log(f"  ⚠️ 禁用词检测跳过: {_rewrite_err}")
+
             # 2.5.5 GEO 优化（新增）
             self._log(f"[7.5/11] 正在进行 GEO 优化...")
 
             # 分析 GEO 得分
-            geo_score_before = self.geo_optimizer.analyze_geo_score(article.get("content", ""))
-            self._log(f"  GEO 优化前得分: {geo_score_before['total_score']}/100")
+            geo_score_before = self.geo_optimizer.analyze_geo_score(article)
+            self._log(f"  GEO 优化前得分: {geo_score_before.total_score}/100")
 
             # 注入直接答案块
-            optimized_content = self.geo_optimizer.inject_direct_answer_blocks(
-                article.get("content", ""),
-                article.get("sections", [])
+            article = await self.geo_optimizer.inject_direct_answer_blocks(
+                article, self.llm_client
             )
 
-            # 优化 FAQ
-            if "faq" in article:
-                optimized_faq = self.geo_optimizer.optimize_faq_for_ai(article["faq"])
-                article["faq"] = optimized_faq
-
-            # 更新文章内容
-            article["content"] = optimized_content
+            # 优化 FAQ — 使用faqSection字段
+            # QUALITY-2修复: 传入 llm_client 以激活真正的重写
+            if "faqSection" in article:
+                faq_items = article["faqSection"].get("items", [])
+                if faq_items:
+                    article["faqSection"]["items"] = self.geo_optimizer.optimize_faq_for_ai(
+                        faq_items, self.llm_client
+                    )
 
             # 重新分析得分
-            geo_score_after = self.geo_optimizer.analyze_geo_score(optimized_content)
-            self._log(f"  GEO 优化后得分: {geo_score_after['total_score']}/100")
-            self._log(f"  提升: +{geo_score_after['total_score'] - geo_score_before['total_score']} 分")
+            geo_score_after = self.geo_optimizer.analyze_geo_score(article)
+            self._log(f"  GEO 优化后得分: {geo_score_after.total_score}/100")
+            self._log(f"  提升: +{geo_score_after.total_score - geo_score_before.total_score} 分")
 
             result["stages"]["geo_optimization"] = {
                 "status": "completed",
-                "score_before": geo_score_before['total_score'],
-                "score_after": geo_score_after['total_score'],
-                "improvement": geo_score_after['total_score'] - geo_score_before['total_score']
+                "score_before": geo_score_before.total_score,
+                "score_after": geo_score_after.total_score,
+                "improvement": geo_score_after.total_score - geo_score_before.total_score
             }
 
 
@@ -416,7 +513,6 @@ class WorkflowOrchestrator:
             self._log(f"[9/11] 正在检测内容原创性 (使用 Google 搜索)...")
 
             from seo_gen.modules.detection import ContentDetector
-            from pathlib import Path
 
             detector = ContentDetector(reference_dir=Path("outputs"), use_online_detection=True)
             content = article.get('content', '')
@@ -581,19 +677,21 @@ class WorkflowOrchestrator:
 
                 # 生成 Schema 标记（新增）
                 self._log("  [3.5/4] 正在生成 Schema 标记...")
+                _faq_list_for_schema = []
+                if "faqSection" in article:
+                    _faq_list_for_schema = article["faqSection"].get("items", [])[:8]
+                elif "faq" in article:
+                    _faq_list_for_schema = article["faq"][:8]
+
                 schema_html = self.schema_generator.generate_all_schemas(
-                    article_title=article.get("title", ""),
-                    article_content=article.get("content", ""),
+                    article=article,
                     article_url=f"https://asgdropshipping.com/{result['slug']}/",
-                    author_name="Janson",
-                    published_date=None,  # 将使用当前时间
-                    modified_date=None,
-                    image_url=cover_image_url,
-                    category="Dropshipping",
-                    faq_items=article.get("faq", [])[:8] if "faq" in article else []
+                    faq_list=_faq_list_for_schema,
+                    category_name="Dropshipping",
+                    publish_date=None
                 )
-                # 将 Schema 注入到 HTML 末尾
-                html_content = html_content + "\n\n" + schema_html
+                # Schema注入到HTML开头（更靠近head位置）
+                html_content = schema_html + "\n\n" + html_content
                 self._log("  ✓ Schema 标记生成完成")
 
 
@@ -621,13 +719,13 @@ class WorkflowOrchestrator:
                 # 记录到文章跟踪器（新增）
                 self.article_tracker.mark_published(
                     keyword=keyword,
-                    title=article.get("title", ""),
+                    article_title=article.get("title", ""),
                     article_type=article_type.value,
                     word_count=total_word_count,
-                    url=f"https://asgdropshipping.com/?p={post_id}",
-                    post_id=post_id,
+                    wordpress_url=f"https://asgdropshipping.com/?p={post_id}",
+                    wp_post_id=post_id,
                     quality_score=score,
-                    geo_score=geo_score_after['total_score']
+                    geo_score=geo_score_after.total_score
                 )
                 self._log("✓ 文章已记录到跟踪器")
 

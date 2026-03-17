@@ -1,0 +1,60 @@
+2026-03-16 17:38:24.951 | INFO     | seo_gen.modules.article_tracker:_init_db:60 - Article tracker database initialized
+2026-03-16 17:38:24.951 | INFO     | seo_gen.modules.keyword_data:__init__:61 - DataForSEO client initialized
+2026-03-16 17:54:02.235 | INFO     | seo_gen.modules.article_tracker:_init_db:60 - Article tracker database initialized
+2026-03-16 17:54:02.235 | INFO     | seo_gen.modules.keyword_data:__init__:61 - DataForSEO client initialized
+2026-03-16 17:54:02.236 | INFO     | seo_gen.modules.serp:analyze:209 - 开始 SERP 分析: dropshipping agent, 获取 100 条结果
+2026-03-16 17:54:02.236 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:89 - 开始获取 10 页搜索结果 (共 100 条)
+2026-03-16 17:54:05.608 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=1, 返回 10 条结果
+2026-03-16 17:54:05.608 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 10/100 条结果
+2026-03-16 17:54:06.385 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=11, 返回 10 条结果
+2026-03-16 17:54:06.385 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 20/100 条结果
+2026-03-16 17:54:06.960 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=21, 返回 10 条结果
+2026-03-16 17:54:06.960 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 30/100 条结果
+2026-03-16 17:54:07.567 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=31, 返回 10 条结果
+2026-03-16 17:54:07.569 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 40/100 条结果
+2026-03-16 17:54:08.461 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=41, 返回 10 条结果
+2026-03-16 17:54:08.462 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 50/100 条结果
+2026-03-16 17:54:09.158 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=51, 返回 7 条结果
+2026-03-16 17:54:09.158 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 57/100 条结果
+2026-03-16 17:54:09.630 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=61, 返回 0 条结果
+2026-03-16 17:54:09.630 | WARNING  | seo_gen.modules.serp:_search_google_multiple_pages:96 - 第 7 页没有返回结果,停止搜索
+2026-03-16 17:54:09.630 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:106 - 搜索完成: dropshipping agent, 共获取 57 条结果
+2026-03-16 17:54:11.508 | ERROR    | seo_gen.modules.llm:chat:120 - LLM 请求失败: 401 - {"error":{"message":"User not found.","code":401}}
+2026-03-16 17:54:11.508 | ERROR    | seo_gen.modules.serp:analyze_search_intent:183 - 搜索意图分析失败: Client error '401 Unauthorized' for url 'https://openrouter.ai/api/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-03-16 19:50:32.871 | INFO     | seo_gen.modules.article_tracker:_init_db:60 - Article tracker database initialized
+2026-03-16 19:50:32.872 | INFO     | seo_gen.modules.keyword_data:__init__:61 - DataForSEO client initialized
+2026-03-16 19:50:32.873 | INFO     | seo_gen.modules.serp:analyze:209 - 开始 SERP 分析: dropshipping agent, 获取 30 条结果
+2026-03-16 19:50:32.873 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:89 - 开始获取 3 页搜索结果 (共 30 条)
+2026-03-16 19:50:35.002 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=1, 返回 10 条结果
+2026-03-16 19:50:35.002 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 10/30 条结果
+2026-03-16 19:50:35.665 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=11, 返回 10 条结果
+2026-03-16 19:50:35.665 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 20/30 条结果
+2026-03-16 19:50:36.336 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping agent, start=21, 返回 10 条结果
+2026-03-16 19:50:36.336 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 30/30 条结果
+2026-03-16 19:50:36.336 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:106 - 搜索完成: dropshipping agent, 共获取 30 条结果
+2026-03-16 19:50:38.432 | ERROR    | seo_gen.modules.llm:chat:120 - LLM 请求失败: 401 - {"error":{"message":"User not found.","code":401}}
+2026-03-16 19:50:38.433 | ERROR    | seo_gen.modules.serp:analyze_search_intent:183 - 搜索意图分析失败: Client error '401 Unauthorized' for url 'https://openrouter.ai/api/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-03-16 19:50:38.433 | INFO     | seo_gen.modules.competitor_scraper:analyze_competitors:396 - Starting competitor analysis for: dropshipping agent
+2026-03-16 19:50:38.433 | INFO     | seo_gen.modules.competitor_scraper:scrape_top_results:144 - Scraping complete: 0/5 successful
+2026-03-16 19:50:38.433 | WARNING  | seo_gen.modules.competitor_scraper:analyze_competitors:400 - No competitors scraped successfully
+2026-03-16 19:50:38.662 | ERROR    | seo_gen.modules.llm:chat:120 - LLM 请求失败: 401 - {"error":{"message":"User not found.","code":401}}
+2026-03-16 21:20:49.039 | INFO     | seo_gen.modules.article_tracker:_init_db:60 - Article tracker database initialized
+2026-03-16 21:20:49.039 | INFO     | seo_gen.modules.keyword_data:__init__:61 - DataForSEO client initialized
+2026-03-16 21:20:49.042 | INFO     | seo_gen.modules.serp:analyze:209 - 开始 SERP 分析: dropshipping fulfillment, 获取 30 条结果
+2026-03-16 21:20:49.042 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:89 - 开始获取 3 页搜索结果 (共 30 条)
+2026-03-16 21:20:51.240 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping fulfillment, start=1, 返回 10 条结果
+2026-03-16 21:20:51.240 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 10/30 条结果
+2026-03-16 21:20:51.963 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping fulfillment, start=11, 返回 10 条结果
+2026-03-16 21:20:51.963 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 20/30 条结果
+2026-03-16 21:20:52.417 | INFO     | seo_gen.modules.serp:_search_google:68 - Google 搜索: dropshipping fulfillment, start=21, 返回 10 条结果
+2026-03-16 21:20:52.417 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:100 - 已获取 30/30 条结果
+2026-03-16 21:20:52.417 | INFO     | seo_gen.modules.serp:_search_google_multiple_pages:106 - 搜索完成: dropshipping fulfillment, 共获取 30 条结果
+2026-03-16 21:20:54.330 | ERROR    | seo_gen.modules.llm:chat:120 - LLM 请求失败: 401 - {"error":{"message":"User not found.","code":401}}
+2026-03-16 21:20:54.331 | ERROR    | seo_gen.modules.serp:analyze_search_intent:183 - 搜索意图分析失败: Client error '401 Unauthorized' for url 'https://openrouter.ai/api/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-03-16 21:20:54.331 | INFO     | seo_gen.modules.competitor_scraper:analyze_competitors:396 - Starting competitor analysis for: dropshipping fulfillment
+2026-03-16 21:20:54.332 | INFO     | seo_gen.modules.competitor_scraper:scrape_top_results:144 - Scraping complete: 0/5 successful
+2026-03-16 21:20:54.333 | WARNING  | seo_gen.modules.competitor_scraper:analyze_competitors:400 - No competitors scraped successfully
+2026-03-16 21:20:54.560 | ERROR    | seo_gen.modules.llm:chat:120 - LLM 请求失败: 401 - {"error":{"message":"User not found.","code":401}}

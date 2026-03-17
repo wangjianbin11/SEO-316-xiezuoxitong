@@ -8,7 +8,7 @@
 import json
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
 
 from loguru import logger
 
@@ -45,7 +45,7 @@ class SchemaGenerator:
         article_url: str,
         image_url: str,
         publish_date: str,
-        keywords: list[str],
+        keywords: List[str],
         word_count: int,
         article_type: str = "pillar"
     ) -> dict:
@@ -143,7 +143,7 @@ class SchemaGenerator:
 
         return schema
 
-    def generate_faq_schema(self, faq_list: list[dict]) -> dict:
+    def generate_faq_schema(self, faq_list: List[dict]) -> dict:
         """
         生成 FAQPage Schema
 
@@ -256,7 +256,7 @@ class SchemaGenerator:
 
     def generate_how_to_schema(
         self,
-        steps: list[dict],
+        steps: List[dict],
         title: str,
         total_time: str = "PT30M"
     ) -> dict:
@@ -305,7 +305,7 @@ class SchemaGenerator:
         self,
         article: dict,
         article_url: str,
-        faq_list: list[dict],
+        faq_list: List[dict],
         category_name: str = "Blog",
         publish_date: Optional[str] = None
     ) -> str:
@@ -433,7 +433,7 @@ class SchemaGenerator:
 
         return False
 
-    def _extract_steps_from_article(self, article: dict) -> list[dict]:
+    def _extract_steps_from_article(self, article: dict) -> List[dict]:
         """从文章中提取步骤"""
         steps = []
         sections = article.get("sections", [])

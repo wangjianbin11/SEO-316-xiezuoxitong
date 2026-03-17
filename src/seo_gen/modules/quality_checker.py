@@ -312,7 +312,11 @@ class QualityChecker:
             scores["passed"].append("URL格式正确(小写+连字符)")
 
         # Heading结构检查
+        # BUG-7修复: 如果 content 为空，从 sections 拼接内容
         content_html = article.get("content", "")
+        if not content_html.strip():
+            sections = article.get("sections", [])
+            content_html = "\n\n".join(s.get("content", "") for s in sections)
         soup = BeautifulSoup(content_html, 'html.parser')
 
         h1_count = len(soup.find_all('h1'))
@@ -523,7 +527,11 @@ class QualityChecker:
             "passed": []
         }
 
+        # BUG-7修复: 如果 content 为空，从 sections 拼接内容
         content_html = article.get("content", "")
+        if not content_html.strip():
+            sections = article.get("sections", [])
+            content_html = "\n\n".join(s.get("content", "") for s in sections)
         soup = BeautifulSoup(content_html, 'html.parser')
 
         # 直接答案块检查
