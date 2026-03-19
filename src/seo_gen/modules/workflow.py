@@ -87,6 +87,7 @@ class WorkflowOrchestrator:
         questions_data: Optional[Dict[str, Any]] = None,
         enhanced_keywords: Optional[List[str]] = None,
         confirmed_article_type: Optional[str] = None,  # 新增:用户确认的文章类型
+        pre_confirmed_title: Optional[str] = None,  # Bug Fix 1: GUI预确认的标题
         resume: bool = True,  # 新增:是否从断点恢复
         use_checkpoint: bool = True,  # 新增:是否使用检查点
     ) -> Dict[str, Any]:
@@ -298,34 +299,48 @@ class WorkflowOrchestrator:
                 }
 
 
-            # 1.2 AI 生成候选标题
-            self._update_step(2, "running", "生成候选标题", 0.16)
-            self._log(f"[2/11] 正在生成标题...")
-            title_candidates = await self.title_generator.generate_titles(
-                keyword=keyword,
-                serp_data=serp_data,
-                count=5,
-            )
-            result["stages"]["title_generation"] = {
-                "status": "completed",
-                "candidates": title_candidates
-            }
-            self._log(f"✓ 生成了 {len(title_candidates)} 个候选标题")
-            self._update_step(2, "completed", "生成标题 - 完成", 0.20)
+            # 1.2 AI 生成候选标题 (Bug Fix 1: 如果GUI已预确认标题则跳过)
+            if pre_confirmed_title:
+                self._log(f"✓ 使用GUI预确认标题: {pre_confirmed_title}")
+                final_title = pre_confirmed_title
+                result["stages"]["title_generation"] = {
+                    "status": "skipped_pre_confirmed",
+                    "title": final_title
+                }
+                result["stages"]["title_selection"] = {
+                    "status": "skipped_pre_confirmed",
+                    "selected": {"title": final_title, "score": 100, "reasoning": "User confirmed in GUI"}
+                }
+                self._update_step(2, "completed", f"标题已确认: {final_title[:30]}...", 0.24)
+            else:
+                # 原有的标题生成逻辑
+                self._update_step(2, "running", "生成候选标题", 0.16)
+                self._log(f"[2/11] 正在生成标题...")
+                title_candidates = await self.title_generator.generate_titles(
+                    keyword=keyword,
+                    serp_data=serp_data,
+                    count=5,
+                )
+                result["stages"]["title_generation"] = {
+                    "status": "completed",
+                    "candidates": title_candidates
+                }
+                self._log(f"✓ 生成了 {len(title_candidates)} 个候选标题")
+                self._update_step(2, "completed", "生成标题 - 完成", 0.20)
 
-            # 1.3 选择最佳标题
-            self._log(f"[3/11] 正在选择最佳标题...")
-            best_title = await self.title_generator.select_best_title(
-                titles=title_candidates,
-                serp_data=serp_data,
-            )
-            result["stages"]["title_selection"] = {
-                "status": "completed",
-                "selected": best_title
-            }
-            final_title = best_title.get("title", keyword)
-            self._log(f"✓ 选择标题: {final_title}")
-            self._update_step(2, "completed", f"选择标题 - {final_title[:30]}...", 0.24)
+                # 1.3 选择最佳标题
+                self._log(f"[3/11] 正在选择最佳标题...")
+                best_title = await self.title_generator.select_best_title(
+                    titles=title_candidates,
+                    serp_data=serp_data,
+                )
+                result["stages"]["title_selection"] = {
+                    "status": "completed",
+                    "selected": best_title
+                }
+                final_title = best_title.get("title", keyword)
+                self._log(f"✓ 选择标题: {final_title}")
+                self._update_step(2, "completed", f"选择标题 - {final_title[:30]}...", 0.24)
 
             # ==================== 阶段2: 内容创作 ====================
             self._log("=" * 50)
@@ -488,10 +503,11 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
 
             # 优化 FAQ — 使用faqSection字段
             # QUALITY-2修复: 传入 llm_client 以激活真正的重写
+            # Bug Fix 2: 添加 await 调用 async 方法
             if "faqSection" in article:
                 faq_items = article["faqSection"].get("items", [])
                 if faq_items:
-                    article["faqSection"]["items"] = self.geo_optimizer.optimize_faq_for_ai(
+                    article["faqSection"]["items"] = await self.geo_optimizer.optimize_faq_for_ai(
                         faq_items, self.llm_client
                     )
 

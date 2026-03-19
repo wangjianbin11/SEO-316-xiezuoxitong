@@ -528,7 +528,11 @@ Return the rewritten text."""
         article["content"] = content
         return article
 
+<<<<<<< HEAD
+    async def optimize_faq_for_ai(self, faq_list: List[Dict], llm_client: Any = None) -> List[Dict]:
+=======
     def optimize_faq_for_ai(self, faq_list: List[Dict], llm_client: Any = None) -> List[Dict]:
+>>>>>>> parent of 98c10574 (3 月 17 日升级)
         """
         优化FAQ使其符合AI引用标准
         QUALITY-2修复: 激活真正的LLM重写

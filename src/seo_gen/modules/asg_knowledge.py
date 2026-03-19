@@ -36,21 +36,35 @@ class ASGKnowledgeBase:
     def __init__(self, knowledge_dir: Optional[Path] = None):
         """
         初始化知识库
+        Step 2: 支持从环境变量读取知识库路径，添加 fallback 机制
 
         Args:
-            knowledge_dir: 知识库根目录，默认为父目录下的基础资料文件夹
+            knowledge_dir: 知识库根目录，默认从环境变量 VECTOR_DB_PATH 读取
         """
         if knowledge_dir is None:
-            # 默认知识库路径
-            current_dir = Path(__file__).parent
-            self.knowledge_dir = current_dir.parent.parent.parent  # 向上找到项目根目录
+            # 优先从环境变量读取知识库路径
+            vector_db_path = os.getenv('VECTOR_DB_PATH')
+            if vector_db_path and Path(vector_db_path).exists():
+                self.knowledge_dir = Path(vector_db_path)
+            else:
+                # Fallback: 默认知识库路径
+                current_dir = Path(__file__).parent
+                self.knowledge_dir = current_dir.parent.parent.parent  # 向上找到项目根目录
         else:
             self.knowledge_dir = Path(knowledge_dir)
 
         # 定义各资料源路径
-        self.base_knowledge_dir = self.knowledge_dir.parent / "asg dropshipping 基础知识_副本"
-        self.faq_matrix_dir = self.knowledge_dir.parent / "asg-faq-matrix-geo_副本"
-        self.geo_guide_dir = self.knowledge_dir.parent / "GEO指南_副本"
+        # 优先使用 VECTOR_DB_PATH 配置的路径，否则使用旧的父目录路径
+        if os.getenv('VECTOR_DB_PATH'):
+            # 使用环境变量配置的知识库路径
+            self.base_knowledge_dir = self.knowledge_dir
+            self.faq_matrix_dir = self.knowledge_dir / "faq-matrix"
+            self.geo_guide_dir = self.knowledge_dir / "geo-guide"
+        else:
+            # Fallback: 使用旧的父目录路径（保持向后兼容）
+            self.base_knowledge_dir = self.knowledge_dir.parent / "asg dropshipping 基础知识_副本"
+            self.faq_matrix_dir = self.knowledge_dir.parent / "asg-faq-matrix-geo_副本"
+            self.geo_guide_dir = self.knowledge_dir.parent / "GEO指南_副本"
 
         # 路径存在性检查（启动时告警，防止silent fail）
         import logging as _logging
@@ -74,17 +88,41 @@ class ASGKnowledgeBase:
         return ""
 
     def get_janson_intro(self) -> str:
-        """获取 Janson 个人介绍"""
+        """
+        获取 Janson 个人介绍
+        Step 2: 支持新旧文件名，添加 fallback 机制
+        """
         if 'janson_intro' not in self._cache:
-            file_path = self.base_knowledge_dir / "janson介绍.txt"
-            self._cache['janson_intro'] = self._read_file(file_path)
+            # 尝试新文件名（优先）
+            file_path = self.base_knowledge_dir / "janson_intro.md"
+            if not file_path.exists():
+                # Fallback 到旧文件名
+                file_path = self.base_knowledge_dir / "janson介绍.txt"
+
+            content = self._read_file(file_path)
+            if not content:
+                # Fallback 到默认内容
+                content = "Janson - ASG Dropshipping CEO & Founder. 8+ years in cross-border e-commerce."
+            self._cache['janson_intro'] = content
         return self._cache['janson_intro']
 
     def get_company_intro(self) -> str:
-        """获取企业介绍"""
+        """
+        获取企业介绍
+        Step 2: 支持新旧文件名，添加 fallback 机制
+        """
         if 'company_intro' not in self._cache:
-            file_path = self.base_knowledge_dir / "企业介绍.txt"
-            self._cache['company_intro'] = self._read_file(file_path)
+            # 尝试新文件名（优先）
+            file_path = self.base_knowledge_dir / "company_intro.md"
+            if not file_path.exists():
+                # Fallback 到旧文件名
+                file_path = self.base_knowledge_dir / "企业介绍.txt"
+
+            content = self._read_file(file_path)
+            if not content:
+                # Fallback 到默认内容
+                content = "ASG Dropshipping - Professional dropshipping and fulfillment service provider."
+            self._cache['company_intro'] = content
         return self._cache['company_intro']
 
     def get_business_process(self) -> str:

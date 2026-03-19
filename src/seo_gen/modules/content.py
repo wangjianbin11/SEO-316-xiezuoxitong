@@ -998,7 +998,7 @@ Each image should:
             if section_images and str(idx) in section_images:
                 html_parts.append(f'<figure class="section-image" style="margin: 1em 0 2em 0;">')
                 # 优先使用LLM生成的具体alt text，回退到section标题
-                _section_image_meta = section.get("image", {})
+                _section_image_meta = section.get("image") or {}
                 alt_text = _section_image_meta.get("alt", "") or f"{title} - {keyword or 'dropshipping'}"
                 alt_text = alt_text.replace('"', "'").strip()
                 html_parts.append(f'<img src="{section_images[str(idx)]}" alt="{alt_text}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;"/>')
