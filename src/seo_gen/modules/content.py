@@ -21,11 +21,11 @@ from seo_gen.modules.knowledge import KnowledgeBase
 from seo_gen.modules.llm import LLMClient
 
 
-# 文章类型对应的模板文件名
+# 文章类型对应的模板文件名（升级版v3）
 ARTICLE_TYPE_TEMPLATES = {
-    "pillar": "ASG-顶梁柱SEO文章写作提示词-终极单体版.md",
-    "response": "ASG-回答型SEO文章写作提示词-终极单体版.md",
-    "share": "ASG-SEO文章写作提示词-分享型.md",
+    "pillar": "pillar_post.md",
+    "response": "response_post.md",
+    "share": "share_post.md",
 }
 
 # ASG案例库路径（使用相对路径，避免硬编码）
@@ -178,6 +178,42 @@ class ContentGenerator:
         """
         self.llm_client = llm_client
         self.knowledge_base = knowledge_base
+        # 预加载所有提示词模板
+        self.prompt_templates = {
+            "pillar": self._load_type_template("pillar"),
+            "response": self._load_type_template("response"),
+            "share": self._load_type_template("share"),
+        }
+
+    def calculate_keyword_density(self, content: str, keyword: str) -> float:
+        """
+        计算关键词密度
+
+        Args:
+            content: 文章内容
+            keyword: 目标关键词
+
+        Returns:
+            关键词密度百分比
+        """
+        if not content or not keyword:
+            return 0.0
+
+        # 统计总字数（按空格分词，适用于英文）
+        words = content.split()
+        total_words = len(words)
+
+        if total_words == 0:
+            return 0.0
+
+        # 统计关键词出现次数（不区分大小写）
+        keyword_lower = keyword.lower()
+        content_lower = content.lower()
+        keyword_count = content_lower.count(keyword_lower)
+
+        # 计算密度
+        density = (keyword_count / total_words) * 100
+        return round(density, 2)
 
     def _load_type_template(self, article_type: str) -> str:
         """
@@ -191,22 +227,27 @@ class ContentGenerator:
         """
         template_name = ARTICLE_TYPE_TEMPLATES.get(article_type)
         if not template_name:
+            logger.warning(f"Unknown article type: {article_type}")
             return ""
 
-        # 尝试多个可能的路径
+        # 搜索路径（按优先级）
         possible_paths = [
-            Path(__file__).parent.parent.parent.parent / template_name,  # 项目根目录
+            Path(__file__).parent.parent / "prompts" / template_name,                  # src/seo_gen/prompts/ (新路径)
+            Path(__file__).parent.parent.parent.parent / "prompts" / template_name,    # 项目根/prompts/
+            Path(__file__).parent.parent.parent / "prompts" / template_name,           # src/prompts/
+            Path("prompts") / template_name,                                           # 工作目录/prompts/
+            Path(__file__).parent.parent.parent.parent / template_name,                # 项目根目录（兼容旧路径）
             Path(__file__).parent.parent.parent / "templates" / template_name,
-            Path(__file__).parent.parent.parent / template_name,
-            Path(template_name),  # 当前工作目录
         ]
 
         for path in possible_paths:
             if path.exists():
-                logger.info(f"Loaded article type template from: {path}")
-                return path.read_text(encoding="utf-8")
+                content = path.read_text(encoding="utf-8")
+                logger.info(f"✓ 加载文章类型提示词: {template_name} ({len(content)}字符)")
+                return content
 
-        logger.warning(f"Article type template not found: {template_name}")
+        logger.error(f"✗ 找不到文章类型提示词: {template_name}")
+        logger.error(f"  搜索路径: {[str(p) for p in possible_paths]}")
         return ""
 
     def _select_relevant_case(self, title: str, keyword: str) -> str:
@@ -348,6 +389,45 @@ This is a list-based, comparison, or ranking article designed to be shareable.
         }
         return instructions.get(article_type, "")
 
+    def _validate_keyword_density(self, article: dict, keyword: str) -> dict:
+        """
+        验证并记录关键词密度
+        目标：0.8%-1.5%
+        将密度信息写入article["_meta"]供后续质量检查使用
+        """
+        # 提取全文
+        full_text = ""
+        full_text += article.get("introduction", "") + " "
+        for section in article.get("sections", []):
+            full_text += section.get("content", "") + " "
+            full_text += section.get("geoAnswerBlock", "") + " "
+        for faq in article.get("faqSection", {}).get("items", []):
+            full_text += faq.get("answer", "") + " "
+        full_text += article.get("conclusion", "")
+
+        # 计算密度
+        words = full_text.lower().split()
+        total_words = len(words)
+        keyword_count = full_text.lower().count(keyword.lower())
+        density = keyword_count / total_words if total_words > 0 else 0
+
+        article["_meta"] = {
+            "keyword_density": round(density, 4),
+            "keyword_count": keyword_count,
+            "total_words": total_words,
+            "density_ok": 0.008 <= density <= 0.015,
+            "density_warning": density > 0.015 or density < 0.008,
+        }
+
+        if density > 0.015:
+            logger.warning(f"⚠️ 关键词密度过高: {density:.2%} > 1.5% (出现{keyword_count}次/{total_words}词)")
+        elif density < 0.008:
+            logger.warning(f"⚠️ 关键词密度过低: {density:.2%} < 0.8% (出现{keyword_count}次/{total_words}词)")
+        else:
+            logger.info(f"✓ 关键词密度正常: {density:.2%} (出现{keyword_count}次/{total_words}词)")
+
+        return article
+
     def _build_context(self, keyword: str, serp_analysis: dict[str, Any], article_type: Optional[str] = None) -> str:
         """构建生成内容的上下文"""
         knowledge = self.knowledge_base.get_all() if self.knowledge_base else {}
@@ -398,6 +478,7 @@ Primary Intent: {serp_analysis.get('primaryIntent', 'share')}
         article_type: Optional[str] = None,
         competitor_context: str = "",   # 新增：竞品分析上下文
         asg_context: str = "",         # BUG-3修复：ASG知识库上下文
+        title: str = "",               # 新增：预确认的标题
     ) -> dict[str, Any]:
         """
         生成完整文章（2500-3000词，纯英文，动态章节）
@@ -817,6 +898,9 @@ Remember: The goal is to write like a real expert (Janson), not follow a templat
         ]
 
         result = await self.llm_client.chat_json(messages, temperature=0.7)
+
+        # 验证关键词密度
+        result = self._validate_keyword_density(result, keyword)
 
         # 记录生成的章节数量和字数
         sections_count = len(result.get("sections", []))

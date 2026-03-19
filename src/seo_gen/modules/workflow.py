@@ -438,6 +438,7 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
                 article_type=article_type.value,  # 传递文章类型
                 competitor_context=competitor_context,
                 asg_context=asg_context,  # BUG-3修复: 传递ASG知识库上下文
+                title=final_title,  # 新增：传入TitleGenerator选出的最佳标题
             )
             result["stages"]["content_generation"] = {
                 "status": "completed",

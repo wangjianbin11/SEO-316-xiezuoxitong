@@ -13,6 +13,14 @@ from bs4 import BeautifulSoup
 
 from loguru import logger
 
+# 尝试导入markdown包
+try:
+    import markdown as md_parser
+    MARKDOWN_AVAILABLE = True
+except ImportError:
+    MARKDOWN_AVAILABLE = False
+    logger.warning("markdown包未安装，将使用正则fallback解析")
+
 
 @dataclass
 class QualityReport:
@@ -65,6 +73,83 @@ class QualityChecker:
             llm_client: LLM 客户端(可选,保留兼容性)
         """
         self.llm_client = llm_client
+
+    def count_words_markdown(self, markdown_content: str) -> int:
+        """
+        统计Markdown内容的字数（排除标题和格式标记）
+
+        Args:
+            markdown_content: Markdown格式的文章内容
+
+        Returns:
+            正文字数（排除标题）
+        """
+        if not markdown_content:
+            return 0
+
+        # 移除Markdown标题（# ## ### 等）
+        lines = markdown_content.split('\n')
+        content_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # 跳过标题行
+            if stripped.startswith('#'):
+                continue
+            # 跳过空行
+            if not stripped:
+                continue
+            content_lines.append(stripped)
+
+        # 合并内容
+        content = ' '.join(content_lines)
+
+        # 移除Markdown格式标记
+        content = re.sub(r'\*\*(.+?)\*\*', r'\1', content)  # 粗体
+        content = re.sub(r'\*(.+?)\*', r'\1', content)      # 斜体
+        content = re.sub(r'`(.+?)`', r'\1', content)        # 行内代码
+        content = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', content)  # 链接
+        content = re.sub(r'!\[.*?\]\(.+?\)', '', content)   # 图片
+
+        # 统计字数
+        words = content.split()
+        return len(words)
+
+    def _get_soup_from_article(self, article: dict) -> BeautifulSoup:
+        """
+        从文章数据获取BeautifulSoup对象
+        处理Markdown/HTML混合格式
+        """
+        # 优先从sections拼接content（Markdown格式）
+        sections = article.get("sections", [])
+        markdown_parts = []
+
+        for section in sections:
+            title = section.get("sectionTitle", "")
+            if title:
+                markdown_parts.append(f"## {title}")
+
+            # GEO答案块（已是Markdown引用格式）
+            geo_block = section.get("geoAnswerBlock", "")
+            if geo_block:
+                markdown_parts.append(f"> {geo_block}")
+
+            content = section.get("content", "")
+            if content:
+                markdown_parts.append(content)
+
+        full_markdown = "\n\n".join(markdown_parts)
+
+        # 转换为HTML再解析
+        if MARKDOWN_AVAILABLE and full_markdown:
+            html = md_parser.markdown(full_markdown, extensions=['tables', 'extra'])
+        else:
+            # Regex fallback
+            html = full_markdown
+            html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
+            html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
+            html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
+
+        return BeautifulSoup(html, 'html.parser')
 
     async def check_article_quality(self, article: dict, keyword: str) -> dict:
         """
@@ -311,13 +396,8 @@ class QualityChecker:
             scores["url"] += 1
             scores["passed"].append("URL格式正确(小写+连字符)")
 
-        # Heading结构检查
-        # BUG-7修复: 如果 content 为空，从 sections 拼接内容
-        content_html = article.get("content", "")
-        if not content_html.strip():
-            sections = article.get("sections", [])
-            content_html = "\n\n".join(s.get("content", "") for s in sections)
-        soup = BeautifulSoup(content_html, 'html.parser')
+        # Heading结构检查 - 使用新的Markdown解析方法
+        soup = self._get_soup_from_article(article)
 
         h1_count = len(soup.find_all('h1'))
         h2_count = len(soup.find_all('h2'))
@@ -527,31 +607,31 @@ class QualityChecker:
             "passed": []
         }
 
-        # BUG-7修复: 如果 content 为空，从 sections 拼接内容
-        content_html = article.get("content", "")
-        if not content_html.strip():
-            sections = article.get("sections", [])
-            content_html = "\n\n".join(s.get("content", "") for s in sections)
-        soup = BeautifulSoup(content_html, 'html.parser')
+        # 使用新的Markdown解析方法
+        soup = self._get_soup_from_article(article)
 
-        # 直接答案块检查
-        answer_blocks = soup.find_all('div', class_='geo-answer-block')
-        h2_count = len(soup.find_all('h2'))
+        # 直接答案块检查 - 从sections字段而非HTML中查找
+        sections = article.get("sections", [])
+        geo_blocks_count = sum(
+            1 for s in sections
+            if s.get("geoAnswerBlock") and len(s["geoAnswerBlock"].split()) >= 40
+        )
+        h2_count = len(sections)  # sections数量即H2数量
 
         if h2_count > 0:
-            ratio = len(answer_blocks) / h2_count
+            ratio = geo_blocks_count / h2_count
 
             if ratio >= 1.0:
                 scores["direct_answer"] = 10
-                scores["passed"].append(f"每个H2都有直接答案块({len(answer_blocks)}/{h2_count})")
+                scores["passed"].append(f"每个H2都有直接答案块({geo_blocks_count}/{h2_count})")
             elif ratio >= 0.7:
                 scores["direct_answer"] = 7
-                scores["warnings"].append(f"大部分H2有答案块({len(answer_blocks)}/{h2_count})")
+                scores["warnings"].append(f"大部分H2有答案块({geo_blocks_count}/{h2_count})")
             elif ratio >= 0.5:
                 scores["direct_answer"] = 4
-                scores["warnings"].append(f"部分H2有答案块({len(answer_blocks)}/{h2_count})")
+                scores["warnings"].append(f"部分H2有答案块({geo_blocks_count}/{h2_count})")
             else:
-                scores["critical"].append(f"答案块严重不足({len(answer_blocks)}/{h2_count})")
+                scores["critical"].append(f"答案块严重不足({geo_blocks_count}/{h2_count})")
 
         # FAQ质量检查
         faq_items = article.get("faqSection", {}).get("items", [])
