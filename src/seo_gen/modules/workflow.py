@@ -562,7 +562,7 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
                 image_gen = ImageGenerator(default_style=image_style)
 
                 # 生成封面图
-                self._log("  [1/4] 正在生成封面图...")
+                self._log("  [1/3] 正在生成封面图...")
                 cover = await image_gen.generate_cover_image(
                     keyword=keyword,
                     title=article.get("title", ""),
@@ -571,10 +571,10 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
                 images["cover"] = cover
                 self._log("  ✓ 封面图生成完成")
 
-                # 生成3张板块配图（修复：原来是2张，现在是3张）
-                sections = article.get("sections", [])[:3]  # 取前3个section
+                # 生成2张板块配图（共3张图：1封面 + 2配图）
+                sections = article.get("sections", [])[:2]  # 取前2个section
                 for i, section in enumerate(sections, 1):
-                    self._log(f"  [{i+1}/4] 正在生成板块配图 {i}...")
+                    self._log(f"  [{i+1}/3] 正在生成板块配图 {i}...")
                     collage = await image_gen.generate_collage_image(
                         keyword=keyword,
                         section_title=section.get("sectionTitle", ""),
@@ -628,7 +628,7 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
 
                 # 上传封面图
                 if not skip_images and "cover" in images:
-                    self._log("  [1/4] 正在上传封面图...")
+                    self._log("  [1/3] 正在上传封面图...")
                     cover_result = await wp_publisher.upload_image(
                         images["cover"],
                         filename=f"{result['slug']}_cover.png",
@@ -645,7 +645,7 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
                     for key, data in images.items():
                         if key.startswith("section_"):
                             section_num = key.split("_")[1]
-                            self._log(f"  [2/4] 正在上传板块配图 {section_num}...")
+                            self._log(f"  [2/3] 正在上传板块配图 {section_num}...")
                             img_result = await wp_publisher.upload_image(
                                 data,
                                 filename=f"{result['slug']}_{key}.png",
@@ -656,7 +656,7 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
                                 self._log(f"  ✓ 板块配图 {section_num} 上传完成")
 
                 # 构建 HTML（包含内部链接、外部链接、关键词标记）
-                self._log("  [3/4] 正在构建 HTML...")
+                self._log("  [3/3] 正在构建 HTML...")
 
                 # 获取内部链接
                 from seo_gen.modules.internal_links import get_internal_link_manager

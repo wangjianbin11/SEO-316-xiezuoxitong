@@ -976,9 +976,12 @@ Each image should:
 
         # ========== Related Articles 已移除 ==========
 
-        # Main Content with Images (所有 section 图片都显示，第一张放在章节开头)
+        # Main Content with Images
+        # 图片插入策略：封面图已在文章最开头，配图按顺序插入前2个section（共3张图）
+        _section_image_keys = sorted(section_images.keys()) if section_images else []
+        _section_image_insert_idx = 0  # 当前应插入的配图索引
+
         for section in article.get("sections", []):
-            idx = section.get("sectionIndex", 0)
             title = section.get("sectionTitle", "")
             content = section.get("content", "")
             # WP-1修复: 使用与TOC一致的slug生成逻辑
@@ -993,17 +996,19 @@ Each image should:
             # Section with anchor and separator
             html_parts.append(f'<h2 id="{slug}">{title}</h2>')
 
-            # Insert section image at the TOP of each section (置顶显示)
-            # 所有有图片的 section 都在章节标题后立即显示图片
-            if section_images and str(idx) in section_images:
+            # Insert section image at the TOP of section (按顺序分配，不依赖sectionIndex)
+            if _section_image_insert_idx < len(_section_image_keys):
+                img_key = _section_image_keys[_section_image_insert_idx]
+                img_url = section_images[img_key]
                 html_parts.append(f'<figure class="section-image" style="margin: 1em 0 2em 0;">')
                 # 优先使用LLM生成的具体alt text，回退到section标题
                 _section_image_meta = section.get("image") or {}
                 alt_text = _section_image_meta.get("alt", "") or f"{title} - {keyword or 'dropshipping'}"
                 alt_text = alt_text.replace('"', "'").strip()
-                html_parts.append(f'<img src="{section_images[str(idx)]}" alt="{alt_text}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;"/>')
+                html_parts.append(f'<img src="{img_url}" alt="{alt_text}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;"/>')
                 html_parts.append(f'<figcaption style="text-align: center; color: #666; font-size: 0.9em; margin-top: 0.5em;">{title}</figcaption>')
                 html_parts.append(f'</figure>')
+                _section_image_insert_idx += 1
 
             # Convert markdown to HTML with paragraph spacing
             content_html = self._markdown_to_html(content)
