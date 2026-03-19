@@ -545,9 +545,9 @@ class PlatformContentGenerator:
                 parts.append(f"  - {search}")
 
         # 热门结果标题
-        if serp_data.get("results"):
+        if serp_data.get("searchResults"):
             parts.append("热门标题：")
-            for result in serp_data["results"][:5]:
+            for result in serp_data["searchResults"][:5]:
                 title = result.get("title", "")[:60]
                 parts.append(f"  - {title}")
 

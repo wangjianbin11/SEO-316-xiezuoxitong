@@ -8,11 +8,14 @@
 """
 
 import re
+import httpx
 from typing import Optional
 from urllib.parse import urlparse
 from pathlib import Path
 
 from loguru import logger
+
+REQUEST_TIMEOUT = 15.0
 
 # ASG 网站地图中的文章列表（定期更新）
 SITEMAP_URLS = [

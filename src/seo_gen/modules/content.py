@@ -11,6 +11,7 @@
 """
 
 import random
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -1046,13 +1047,12 @@ Each image should:
         for section in article.get("sections", []):
             title = section.get("sectionTitle", "")
             # WP-1修复: 完整的特殊字符处理（URL安全slug）
-            import re as _re
             slug = title.lower()
             # 移除特殊字符，只保留字母数字和连字符
-            slug = _re.sub(r'[^a-z0-9\s-]', '', slug)
+            slug = re.sub(r'[^a-z0-9\s-]', '', slug)
             # 空格转连字符，合并多个连字符
-            slug = _re.sub(r'[\s_]+', '-', slug)
-            slug = _re.sub(r'-+', '-', slug).strip('-')
+            slug = re.sub(r'[\s_]+', '-', slug)
+            slug = re.sub(r'-+', '-', slug).strip('-')
             html_parts.append(f'<li><a href="#{slug}">{title}</a></li>')
         html_parts.append('</ol>')
         html_parts.append('</div>')
@@ -1069,13 +1069,12 @@ Each image should:
             title = section.get("sectionTitle", "")
             content = section.get("content", "")
             # WP-1修复: 使用与TOC一致的slug生成逻辑
-            import re as _re
             slug = title.lower()
             # 移除特殊字符，只保留字母数字和连字符
-            slug = _re.sub(r'[^a-z0-9\s-]', '', slug)
+            slug = re.sub(r'[^a-z0-9\s-]', '', slug)
             # 空格转连字符，合并多个连字符
-            slug = _re.sub(r'[\s_]+', '-', slug)
-            slug = _re.sub(r'-+', '-', slug).strip('-')
+            slug = re.sub(r'[\s_]+', '-', slug)
+            slug = re.sub(r'-+', '-', slug).strip('-')
 
             # Section with anchor and separator
             html_parts.append(f'<h2 id="{slug}">{title}</h2>')
@@ -1164,8 +1163,6 @@ Each image should:
         - 内部链接：橘色加粗
         - 外部链接：蓝色加粗
         """
-        import re
-
         result = html_content
 
         # 1. 标记主关键词（蓝色加粗）- 只标记前3次出现
@@ -1223,8 +1220,6 @@ Each image should:
 
     def _markdown_to_html(self, markdown: str) -> str:
         """Convert markdown to HTML with proper spacing"""
-        import re
-
         html = markdown
 
         # CRITICAL: Remove any markdown image syntax that AI might have incorrectly included
@@ -1282,7 +1277,15 @@ Each image should:
         # Links
         html = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', html)
 
-        # Lists
+        # Lists - ordered lists first (use placeholder to avoid conflict with unordered)
+        html = re.sub(r'^\d+\. (.+)$', r'<oli>\1</oli>', html, flags=re.MULTILINE)
+        html = re.sub(
+            r'(<oli>.+</oli>\n?)+',
+            lambda m: '<ol>\n' + m.group(0).replace('<oli>', '<li>').replace('</oli>', '</li>') + '</ol>',
+            html
+        )
+
+        # Lists - unordered
         html = re.sub(r'^- (.+)$', r'<li>\1</li>', html, flags=re.MULTILINE)
         html = re.sub(r'(<li>.+</li>\n?)+', r'<ul>\n\0</ul>', html)
 

@@ -15,8 +15,7 @@ from seo_gen.modules.image import ImageGenerator
 from seo_gen.modules.knowledge import KnowledgeBase, get_knowledge_base
 from seo_gen.modules.llm import LLMClient
 from seo_gen.modules.outline import OutlineGenerator, get_outline_generator
-from seo_gen.modules.quality import QualityChecker as OldQualityChecker, get_quality_checker
-from seo_gen.modules.quality_checker import QualityChecker  # 新版质量检查器
+from seo_gen.modules.quality_checker import QualityChecker  # 规则版质量检查器
 from seo_gen.modules.serp import SERPAnalyzer
 from seo_gen.modules.structure import StructureAnalyzer, get_structure_analyzer
 from seo_gen.modules.title import TitleGenerator, get_title_generator
@@ -447,7 +446,12 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
 
             # 统计实际生成的章节数和字数
             actual_sections = len(article.get('sections', []))
-            word_count = len(article.get('content', ''))
+
+            # 从 sections 聚合计算真实字数
+            _all_content = " ".join(
+                s.get("content", "") for s in article.get("sections", [])
+            )
+            word_count = len(_all_content.split())
             total_word_count = article.get('totalWordCount', word_count)
 
             self._log(f"✓ 文章撰写完成: {actual_sections} 章节, {total_word_count} 字")
@@ -725,26 +729,34 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
                 )
                 await wp_publisher.close()
 
-                result["stages"]["wordpress_published"] = {
-                    "status": "completed",
-                    "post_id": post_id
-                }
-                self._log(f"✓ WordPress 草稿创建成功")
-                self._log(f"  文章链接: https://asgdropshipping.com/?p={post_id}")
-                self._update_step(10, "completed", "发布 WordPress - 完成", 1.0)
+                if post_id:
+                    result["stages"]["wordpress_published"] = {
+                        "status": "completed",
+                        "post_id": post_id
+                    }
+                    self._log(f"✓ WordPress 草稿创建成功")
+                    self._log(f"  文章链接: https://asgdropshipping.com/?p={post_id}")
+                    self._update_step(10, "completed", "发布 WordPress - 完成", 1.0)
 
-                # 记录到文章跟踪器（新增）
-                self.article_tracker.mark_published(
-                    keyword=keyword,
-                    article_title=article.get("title", ""),
-                    article_type=article_type.value,
-                    word_count=total_word_count,
-                    wordpress_url=f"https://asgdropshipping.com/?p={post_id}",
-                    wp_post_id=post_id,
-                    quality_score=score,
-                    geo_score=geo_score_after.total_score
-                )
-                self._log("✓ 文章已记录到跟踪器")
+                    # 记录到文章跟踪器（新增）
+                    self.article_tracker.mark_published(
+                        keyword=keyword,
+                        article_title=article.get("title", ""),
+                        article_type=article_type.value,
+                        word_count=total_word_count,
+                        wordpress_url=f"https://asgdropshipping.com/?p={post_id}",
+                        wp_post_id=post_id,
+                        quality_score=score,
+                        geo_score=geo_score_after.total_score
+                    )
+                    self._log("✓ 文章已记录到跟踪器")
+                else:
+                    result["stages"]["wordpress_published"] = {
+                        "status": "failed",
+                        "error": "post_id is None"
+                    }
+                    self._log("⚠️ WordPress 发布失败，跳过追踪器记录")
+                    self._update_step(10, "completed", "发布 WordPress - 失败", 1.0)
 
 
             result["success"] = True
@@ -780,12 +792,9 @@ _workflow_orchestrator: Optional[WorkflowOrchestrator] = None
 def get_workflow_orchestrator(progress_callback: Optional[Callable] = None) -> WorkflowOrchestrator:
     """获取全局工作流编排器单例"""
     global _workflow_orchestrator
-    if _workflow_orchestrator is None or progress_callback is not None:
+    if _workflow_orchestrator is None:
         _workflow_orchestrator = WorkflowOrchestrator(progress_callback=progress_callback)
-        # 重置全局引用以便下次可以创建新的
-        if progress_callback is None:
-            pass
-    # 如果有新的回调，更新现有的编排器
-    if progress_callback and _workflow_orchestrator:
+    elif progress_callback is not None:
+        # 只更新 callback，不重建实例
         _workflow_orchestrator.progress_callback = progress_callback
     return _workflow_orchestrator

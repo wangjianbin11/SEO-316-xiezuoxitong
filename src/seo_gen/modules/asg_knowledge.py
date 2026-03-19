@@ -3,10 +3,17 @@ ASG 知识库管理模块
 
 整合企业知识、个人介绍、FAQ案例和写作规范，为内容生成提供专业素材支持。
 
-知识库来源：
-1. asg dropshipping 基础知识_副本/ - 基础资料
-2. asg-faq-matrix-geo_副本/ - FAQ矩阵和案例库
-3. GEO指南_副本/ - 写作规范
+知识库来源（ASG-KB-FULL）：
+  00-企业DNA/          → 企业介绍、创始人、使命愿景、核心竞争力
+  01-销售获客/          → 客户画像、获客系统、话术库
+  01-GEO市场分析/       → 区域市场深度分析
+  02-供应链与服务/      → 物流、QC、订单处理、付款
+  03-品牌与营销/        → SEO、内容策略、社交媒体
+  09-客户案例库/        → 成功案例
+  ip知识库/             → 行业知识、案例库、实战工具包
+  10-竞品情报库/        → 竞品分析
+  11-行业洞察/          → 行业趋势
+  07-模板库/            → 各类模板
 """
 
 import os
@@ -28,6 +35,10 @@ class ASGKnowledgeContext:
     case_studies: List[Dict[str, Any]]  # 相关案例
     geo_guidelines: str  # GEO写作规范
     tools_templates: str  # 实用工具与模板
+    competitor_intel: str  # 竞品情报
+    industry_insights: str  # 行业洞察
+    supply_chain_knowledge: str  # 供应链知识
+    marketing_knowledge: str  # 品牌与营销知识
 
 
 class ASGKnowledgeBase:
@@ -36,44 +47,53 @@ class ASGKnowledgeBase:
     def __init__(self, knowledge_dir: Optional[Path] = None):
         """
         初始化知识库
-        Step 2: 支持从环境变量读取知识库路径，添加 fallback 机制
 
         Args:
             knowledge_dir: 知识库根目录，默认从环境变量 VECTOR_DB_PATH 读取
         """
         if knowledge_dir is None:
-            # 优先从环境变量读取知识库路径
             vector_db_path = os.getenv('VECTOR_DB_PATH')
             if vector_db_path and Path(vector_db_path).exists():
                 self.knowledge_dir = Path(vector_db_path)
             else:
-                # Fallback: 默认知识库路径
                 current_dir = Path(__file__).parent
-                self.knowledge_dir = current_dir.parent.parent.parent  # 向上找到项目根目录
+                self.knowledge_dir = current_dir.parent.parent.parent
         else:
             self.knowledge_dir = Path(knowledge_dir)
 
-        # 定义各资料源路径
-        # 优先使用 VECTOR_DB_PATH 配置的路径，否则使用旧的父目录路径
-        if os.getenv('VECTOR_DB_PATH'):
-            # 使用环境变量配置的知识库路径
-            self.base_knowledge_dir = self.knowledge_dir
-            self.faq_matrix_dir = self.knowledge_dir / "faq-matrix"
-            self.geo_guide_dir = self.knowledge_dir / "geo-guide"
-        else:
-            # Fallback: 使用旧的父目录路径（保持向后兼容）
-            self.base_knowledge_dir = self.knowledge_dir.parent / "asg dropshipping 基础知识_副本"
-            self.faq_matrix_dir = self.knowledge_dir.parent / "asg-faq-matrix-geo_副本"
-            self.geo_guide_dir = self.knowledge_dir.parent / "GEO指南_副本"
+        # ==================== 新版路径映射（ASG-KB-FULL） ====================
+        self.dir_enterprise_dna = self.knowledge_dir / "00-企业DNA"
+        self.dir_sales = self.knowledge_dir / "01-销售获客"
+        self.dir_geo_market = self.knowledge_dir / "01-GEO市场分析"
+        self.dir_supply_chain = self.knowledge_dir / "02-供应链与服务"
+        self.dir_marketing = self.knowledge_dir / "03-品牌与营销"
+        self.dir_team = self.knowledge_dir / "04-团队管理"
+        self.dir_strategy = self.knowledge_dir / "05-战略复盘"
+        self.dir_ai_agent = self.knowledge_dir / "06-AI-Agent"
+        self.dir_templates = self.knowledge_dir / "07-模板库"
+        self.dir_case_studies = self.knowledge_dir / "09-客户案例库"
+        self.dir_case_faq = self.knowledge_dir / "09-客户案例库-F&Q"
+        self.dir_competitor = self.knowledge_dir / "10-竞品情报库"
+        self.dir_industry = self.knowledge_dir / "11-行业洞察"
+        self.dir_ip_kb = self.knowledge_dir / "ip知识库"
 
-        # 路径存在性检查（启动时告警，防止silent fail）
-        import logging as _logging
+        # 向后兼容：旧代码引用的属性
+        self.base_knowledge_dir = self.dir_enterprise_dna
+        self.faq_matrix_dir = self.dir_case_faq if self.dir_case_faq.exists() else self.dir_case_studies
+        self.geo_guide_dir = self.dir_geo_market
+
+        # 路径存在性检查
+        from loguru import logger as _logger
         for _attr, _path in [
-            ("base_knowledge_dir", self.base_knowledge_dir),
-            ("faq_matrix_dir", self.faq_matrix_dir),
+            ("00-企业DNA", self.dir_enterprise_dna),
+            ("01-销售获客", self.dir_sales),
+            ("01-GEO市场分析", self.dir_geo_market),
+            ("02-供应链与服务", self.dir_supply_chain),
+            ("09-客户案例库", self.dir_case_studies),
+            ("ip知识库", self.dir_ip_kb),
         ]:
             if not _path.exists():
-                _logging.warning(f"[ASGKnowledge] 路径不存在: {_attr} = {_path}")
+                _logger.warning(f"[ASGKnowledge] 路径不存在: {_attr} = {_path}")
 
         # 缓存
         self._cache: Dict[str, Any] = {}
@@ -88,39 +108,29 @@ class ASGKnowledgeBase:
         return ""
 
     def get_janson_intro(self) -> str:
-        """
-        获取 Janson 个人介绍
-        Step 2: 支持新旧文件名，添加 fallback 机制
-        """
+        """获取 Janson 个人介绍"""
         if 'janson_intro' not in self._cache:
-            # 尝试新文件名（优先）
-            file_path = self.base_knowledge_dir / "janson_intro.md"
+            file_path = self.dir_enterprise_dna / "Janson创始人介绍.md"
             if not file_path.exists():
-                # Fallback 到旧文件名
-                file_path = self.base_knowledge_dir / "janson介绍.txt"
-
+                file_path = self.dir_enterprise_dna / "janson_intro.md"
+            if not file_path.exists():
+                file_path = self.dir_enterprise_dna / "janson介绍.txt"
             content = self._read_file(file_path)
             if not content:
-                # Fallback 到默认内容
                 content = "Janson - ASG Dropshipping CEO & Founder. 8+ years in cross-border e-commerce."
             self._cache['janson_intro'] = content
         return self._cache['janson_intro']
 
     def get_company_intro(self) -> str:
-        """
-        获取企业介绍
-        Step 2: 支持新旧文件名，添加 fallback 机制
-        """
+        """获取企业介绍"""
         if 'company_intro' not in self._cache:
-            # 尝试新文件名（优先）
-            file_path = self.base_knowledge_dir / "company_intro.md"
+            file_path = self.dir_enterprise_dna / "公司基本信息.md"
             if not file_path.exists():
-                # Fallback 到旧文件名
-                file_path = self.base_knowledge_dir / "企业介绍.txt"
-
+                file_path = self.dir_enterprise_dna / "company_intro.md"
+            if not file_path.exists():
+                file_path = self.dir_enterprise_dna / "企业介绍.txt"
             content = self._read_file(file_path)
             if not content:
-                # Fallback 到默认内容
                 content = "ASG Dropshipping - Professional dropshipping and fulfillment service provider."
             self._cache['company_intro'] = content
         return self._cache['company_intro']
@@ -128,128 +138,190 @@ class ASGKnowledgeBase:
     def get_business_process(self) -> str:
         """获取业务流程"""
         if 'business_process' not in self._cache:
-            file_path = self.base_knowledge_dir / "业务流程.txt"
+            # 从供应链目录获取
+            file_path = self.dir_supply_chain / "订单处理" / "订单处理SOP.md"
+            if not file_path.exists():
+                file_path = self.dir_enterprise_dna / "核心服务菜单.md"
             self._cache['business_process'] = self._read_file(file_path)
         return self._cache['business_process']
 
     def get_customer_persona(self) -> str:
         """获取客户画像"""
         if 'customer_persona' not in self._cache:
-            # 尝试完整版优先
-            file_path = self.base_knowledge_dir / "客户画像-完整版.md"
-            if not file_path.exists():
-                file_path = self.base_knowledge_dir / "客户画像.txt"
-            self._cache['customer_persona'] = self._read_file(file_path)
+            # 从销售获客/客户画像目录聚合
+            persona_dir = self.dir_sales / "客户画像"
+            if persona_dir.exists():
+                parts = []
+                for f in sorted(persona_dir.glob("画像*.md")):
+                    parts.append(self._read_file(f))
+                self._cache['customer_persona'] = "\n\n---\n\n".join(parts) if parts else ""
+            else:
+                self._cache['customer_persona'] = ""
         return self._cache['customer_persona']
 
+    def get_core_competency(self) -> str:
+        """获取核心竞争力"""
+        if 'core_competency' not in self._cache:
+            file_path = self.dir_enterprise_dna / "核心竞争力-Why-ASG.md"
+            self._cache['core_competency'] = self._read_file(file_path)
+        return self._cache['core_competency']
+
     def get_geo_guidelines(self) -> str:
-        """获取 GEO 写作指南"""
+        """获取 GEO 写作指南（从 01-GEO市场分析 聚合）"""
         if 'geo_guidelines' not in self._cache:
-            # 尝试多个可能的文件
-            for filename in ["GEO代发货专项指南-完整版.md", "GEO完整指南-ASG专用版.md"]:
-                file_path = self.base_knowledge_dir / filename
-                if file_path.exists():
-                    self._cache['geo_guidelines'] = self._read_file(file_path)
-                    break
+            if self.dir_geo_market.exists():
+                parts = []
+                for f in sorted(self.dir_geo_market.glob("*.md")):
+                    parts.append(self._read_file(f))
+                self._cache['geo_guidelines'] = "\n\n---\n\n".join(parts) if parts else ""
             else:
                 self._cache['geo_guidelines'] = ""
         return self._cache['geo_guidelines']
 
     def get_tools_templates(self) -> str:
-        """获取实用工具与模板"""
+        """获取实用工具与模板（从 07-模板库 聚合）"""
         if 'tools_templates' not in self._cache:
-            file_path = self.base_knowledge_dir / "实用工具与模板大全.md"
-            self._cache['tools_templates'] = self._read_file(file_path)
+            if self.dir_templates.exists():
+                parts = []
+                for f in sorted(self.dir_templates.glob("*.md")):
+                    parts.append(self._read_file(f))
+                self._cache['tools_templates'] = "\n\n---\n\n".join(parts) if parts else ""
+            else:
+                self._cache['tools_templates'] = ""
         return self._cache['tools_templates']
 
-    def get_beginner_guide(self) -> str:
-        """获取新手完整指南"""
-        if 'beginner_guide' not in self._cache:
-            file_path = self.base_knowledge_dir / "新手完整指南.md"
-            self._cache['beginner_guide'] = self._read_file(file_path)
-        return self._cache['beginner_guide']
+    def get_competitor_intel(self) -> str:
+        """获取竞品情报"""
+        if 'competitor_intel' not in self._cache:
+            if self.dir_competitor.exists():
+                parts = []
+                for f in sorted(self.dir_competitor.glob("*.md")):
+                    if "MOC" not in f.name:
+                        parts.append(self._read_file(f))
+                self._cache['competitor_intel'] = "\n\n---\n\n".join(parts) if parts else ""
+            else:
+                self._cache['competitor_intel'] = ""
+        return self._cache['competitor_intel']
+
+    def get_supply_chain_knowledge(self) -> str:
+        """获取供应链知识"""
+        if 'supply_chain' not in self._cache:
+            if self.dir_supply_chain.exists():
+                parts = []
+                for f in sorted(self.dir_supply_chain.rglob("*.md")):
+                    if "MOC" not in f.name:
+                        parts.append(self._read_file(f))
+                self._cache['supply_chain'] = "\n\n---\n\n".join(parts) if parts else ""
+            else:
+                self._cache['supply_chain'] = ""
+        return self._cache['supply_chain']
+
+    def get_marketing_knowledge(self) -> str:
+        """获取品牌与营销知识"""
+        if 'marketing' not in self._cache:
+            if self.dir_marketing.exists():
+                parts = []
+                for f in sorted(self.dir_marketing.rglob("*.md")):
+                    if "MOC" not in f.name:
+                        parts.append(self._read_file(f))
+                self._cache['marketing'] = "\n\n---\n\n".join(parts) if parts else ""
+            else:
+                self._cache['marketing'] = ""
+        return self._cache['marketing']
+
+    def get_industry_insights(self) -> str:
+        """获取行业洞察"""
+        if 'industry' not in self._cache:
+            if self.dir_industry.exists():
+                parts = []
+                for f in sorted(self.dir_industry.rglob("*.md")):
+                    if "MOC" not in f.name:
+                        parts.append(self._read_file(f))
+                self._cache['industry'] = "\n\n---\n\n".join(parts) if parts else ""
+            else:
+                self._cache['industry'] = ""
+        return self._cache['industry']
 
     def search_faq(self, keyword: str, limit: int = 5) -> List[Dict[str, str]]:
         """
-        在 FAQ 矩阵中搜索相关内容
+        在知识库中搜索与关键词相关的内容片段
 
-        Args:
-            keyword: 搜索关键词
-            limit: 返回结果数量限制
-
-        Returns:
-            匹配的FAQ片段列表
+        搜索范围：09-客户案例库-FQ、01-销售获客/话术库、ip知识库
         """
-        if not self.faq_matrix_dir.exists():
-            return []
-
         results = []
         keyword_lower = keyword.lower()
 
-        # 遍历所有FAQ文件
-        for faq_file in self.faq_matrix_dir.glob("*-FAQ.md"):
-            if not faq_file.is_file():
+        # 搜索目录列表（按优先级）
+        search_dirs = [
+            self.faq_matrix_dir,
+            self.dir_sales / "话术库",
+            self.dir_ip_kb,
+        ]
+
+        for search_dir in search_dirs:
+            if not search_dir.exists():
                 continue
-
-            content = self._read_file(faq_file)
-            if not content:
-                continue
-
-            # 检查是否包含关键词
-            if keyword_lower in content.lower():
-                # 提取相关段落
-                sections = self._extract_relevant_sections(content, keyword_lower)
-                for section in sections[:limit]:
-                    results.append({
-                        'source': faq_file.name,
-                        'content': section,
-                    })
-                    if len(results) >= limit:
-                        break
-
-            if len(results) >= limit:
-                break
-
+            for faq_file in search_dir.rglob("*.md"):
+                if not faq_file.is_file():
+                    continue
+                content = self._read_file(faq_file)
+                if not content:
+                    continue
+                if keyword_lower in content.lower():
+                    sections = self._extract_relevant_sections(content, keyword_lower)
+                    for section in sections[:limit]:
+                        results.append({
+                            'source': faq_file.name,
+                            'content': section,
+                        })
+                        if len(results) >= limit:
+                            return results
         return results
 
     def search_case_studies(self, keyword: str, limit: int = 3) -> List[Dict[str, Any]]:
         """
         在案例库中搜索相关案例
 
-        Args:
-            keyword: 搜索关键词
-            limit: 返回结果数量限制
-
-        Returns:
-            匹配的案例列表
+        搜索范围：09-客户案例库、ip知识库/案例库
         """
-        if not self.faq_matrix_dir.exists():
-            return []
-
         results = []
         keyword_lower = keyword.lower()
 
-        # 遍历所有案例文件
-        for case_file in self.faq_matrix_dir.glob("ASG成功案例库-*.md"):
-            if not case_file.is_file():
+        # 搜索目录列表
+        search_dirs = [
+            self.dir_case_studies,
+            self.dir_ip_kb / "02-行业知识库（专业垂类层）" / "06-案例库",
+        ]
+
+        for search_dir in search_dirs:
+            if not search_dir.exists():
                 continue
+            for case_file in search_dir.rglob("*.md"):
+                if not case_file.is_file() or "README" in case_file.name:
+                    continue
+                content = self._read_file(case_file)
+                if not content:
+                    continue
 
-            content = self._read_file(case_file)
-            if not content:
-                continue
-
-            # 提取案例
-            cases = self._extract_cases(content)
-            for case in cases:
-                # 检查案例是否与关键词相关
-                case_text = json.dumps(case, ensure_ascii=False).lower()
-                if keyword_lower in case_text or self._is_semantically_related(case_text, keyword_lower):
-                    results.append(case)
-                    if len(results) >= limit:
-                        break
-
-            if len(results) >= limit:
-                break
+                # 先尝试结构化提取
+                cases = self._extract_cases(content)
+                if cases:
+                    for case in cases:
+                        case_text = json.dumps(case, ensure_ascii=False).lower()
+                        if keyword_lower in case_text or self._is_semantically_related(case_text, keyword_lower):
+                            results.append(case)
+                            if len(results) >= limit:
+                                return results
+                else:
+                    # 非结构化：整个文件作为一个案例
+                    if keyword_lower in content.lower() or self._is_semantically_related(content.lower(), keyword_lower):
+                        results.append({
+                            'id': case_file.stem,
+                            'title': case_file.stem,
+                            'content': content[:2000],
+                        })
+                        if len(results) >= limit:
+                            return results
 
         return results
 
@@ -342,6 +414,10 @@ class ASGKnowledgeBase:
             case_studies=self.search_case_studies(keyword, limit=3),
             geo_guidelines=self.get_geo_guidelines(),
             tools_templates=self.get_tools_templates(),
+            competitor_intel=self.get_competitor_intel(),
+            industry_insights=self.get_industry_insights(),
+            supply_chain_knowledge=self.get_supply_chain_knowledge(),
+            marketing_knowledge=self.get_marketing_knowledge(),
         )
 
     def build_content_prompt_context(self, keyword: str) -> str:
@@ -367,16 +443,25 @@ class ASGKnowledgeBase:
 ## 二、ASG 企业介绍（用于建立品牌可信度）
 {company_intro}
 
-## 三、目标客户画像（用于内容针对性）
+## 三、核心竞争力（用于差异化论述）
+{core_competency}
+
+## 四、目标客户画像（用于内容针对性）
 {customer_persona}
 
-## 四、相关 FAQ 参考（用于内容准确性）
+## 五、供应链与服务知识（用于专业论述）
+{supply_chain}
+
+## 六、相关 FAQ 参考（用于内容准确性）
 {faq_content}
 
-## 五、相关案例（用于内容说服力）
+## 七、相关案例（用于内容说服力）
 {case_content}
 
-## 六、写作规范
+## 八、竞品情报（用于对比分析）
+{competitor_intel}
+
+## 九、写作规范
 - 使用第一人称（Janson 的视角）
 - 语气专业、自信、直接，带有"过来人"的经验感
 - 每个关键论点需要有数据/案例支撑
@@ -398,9 +483,12 @@ class ASGKnowledgeBase:
         return prompt_context.format(
             janson_intro=context.janson_intro[:1500] if context.janson_intro else "Janson 是 ASG Dropshipping CEO，深耕跨境电商一件代发领域 8 年。",
             company_intro=context.company_intro[:1500] if context.company_intro else "ASG Dropshipping 是一站式供应链与履约服务公司。",
+            core_competency=self.get_core_competency()[:1000] if self.get_core_competency() else "ASG 提供一站式代发货解决方案",
             customer_persona=context.customer_persona[:1000] if context.customer_persona else "月销 $3,000-$10,000 的跨境电商创业者",
+            supply_chain=context.supply_chain_knowledge[:1500] if context.supply_chain_knowledge else "专业供应链管理与质检服务",
             faq_content=faq_content[:2000],
             case_content=case_content[:2000],
+            competitor_intel=context.competitor_intel[:1000] if context.competitor_intel else "暂无竞品情报",
         )
 
     def get_writing_knowledge_summary(self, keyword: str) -> Dict[str, Any]:
@@ -423,6 +511,10 @@ class ASGKnowledgeBase:
             'faq_count': len(context.faq_snippets),
             'case_count': len(context.case_studies),
             'has_geo_guidelines': bool(context.geo_guidelines),
+            'has_competitor_intel': bool(context.competitor_intel),
+            'has_supply_chain': bool(context.supply_chain_knowledge),
+            'has_marketing': bool(context.marketing_knowledge),
+            'has_industry_insights': bool(context.industry_insights),
             'knowledge_loaded': any([
                 context.janson_intro,
                 context.company_intro,

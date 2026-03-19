@@ -7,7 +7,7 @@ from seo_gen.modules.serp import SERPAnalyzer
 from seo_gen.modules.content import ContentGenerator
 from seo_gen.modules.image import ImageGenerator
 from seo_gen.modules.wordpress import WordPressPublisher
-from seo_gen.modules.quality import QualityChecker as OldQualityChecker  # 保留旧版本兼容
+from seo_gen.modules.quality import QualityChecker as LLMQualityChecker  # 旧版LLM评估
 from seo_gen.modules.quality_checker import QualityChecker  # 新版质量检查器
 from seo_gen.modules.feishu import FeishuClient
 from seo_gen.modules.knowledge import KnowledgeBase
@@ -26,7 +26,7 @@ __all__ = [
     "ContentGenerator",
     "ImageGenerator",
     "WordPressPublisher",
-    "OldQualityChecker",
+    "LLMQualityChecker",
     "QualityChecker",
     "FeishuClient",
     "KnowledgeBase",

@@ -664,7 +664,7 @@ Examples:
             # Extract search intent from SERP data
             detected_intent = serp_data.get("searchIntent", "")
             related_searches = serp_data.get("relatedSearches", [])
-            results = serp_data.get("results", [])
+            results = serp_data.get("searchResults", [])
 
             # Build dynamic options based on actual SERP data
             search_intents = self._analyze_search_intents_from_serp(

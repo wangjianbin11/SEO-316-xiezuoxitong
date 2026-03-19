@@ -40,7 +40,7 @@ class TitleGenerator:
 
         # 提取 SERP 中的现有标题
         competing_titles = []
-        for result in serp_data.get("results", []):
+        for result in serp_data.get("searchResults", []):
             title = result.get("title", "")
             if title:
                 competing_titles.append(title)

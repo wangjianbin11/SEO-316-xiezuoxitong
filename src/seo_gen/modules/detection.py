@@ -636,36 +636,38 @@ class ContentDetector:
 
     def detect_all_sync(self, text: str) -> Dict:
         """
-        Synchronous version of detect_all for backward compatibility
+        Synchronous version of detect_all for backward compatibility.
+        Attempts to run the full async pipeline; falls back to local-only if event loop conflicts.
 
         Returns:
             Same as detect_all but runs synchronously
         """
         import asyncio
 
-        # For sync mode, use local detection only
-        ai_result = self.ai_detector.detect(text)
-        plagiarism_result = self.plagiarism_detector.detect(text)
+        try:
+            return asyncio.run(self.detect_all(text))
+        except RuntimeError:
+            # Already inside an event loop (e.g. Jupyter) — fallback to local detection
+            ai_result = self.ai_detector.detect(text)
+            plagiarism_result = self.plagiarism_detector.detect(text)
 
-        # Calculate overall score
-        human_score = ai_result['human_probability']
-        originality_score = plagiarism_result['originality_score']
-        overall_score = (human_score * 0.6 + originality_score * 0.4) * 100
+            human_score = ai_result['human_probability']
+            originality_score = plagiarism_result['originality_score']
+            overall_score = (human_score * 0.6 + originality_score * 0.4) * 100
 
-        # Generate recommendation
-        recommendation = self._generate_recommendation(
-            ai_result,
-            plagiarism_result,
-            overall_score
-        )
+            recommendation = self._generate_recommendation(
+                ai_result,
+                plagiarism_result,
+                overall_score
+            )
 
-        return {
-            "ai_detection": ai_result,
-            "plagiarism_detection": plagiarism_result,
-            "overall_score": round(overall_score, 1),
-            "recommendation": recommendation,
-            "note": "Using local detection only (sync mode)"
-        }
+            return {
+                "ai_detection": ai_result,
+                "plagiarism_detection": plagiarism_result,
+                "overall_score": round(overall_score, 1),
+                "recommendation": recommendation,
+                "note": "Local detection only (event loop conflict)"
+            }
 
     def _generate_recommendation(self, ai_result: Dict, plagiarism_result: Dict, score: float) -> str:
         """Generate improvement recommendations"""
