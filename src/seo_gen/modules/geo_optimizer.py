@@ -352,14 +352,22 @@ class GEOOptimizer:
             section_title = section.get("sectionTitle", "")
             section_content = section.get("content", "")
 
-            # 跳过已有答案块的章节
+            # BUG-4修复: 优先检查 geoAnswerBlock 字段是否已由 LLM 填写
+            existing_block = section.get("geoAnswerBlock", "")
+            if existing_block and len(existing_block.split()) >= 40:
+                logger.debug(f"Section {i+1} already has geoAnswerBlock field, skipping injection")
+                continue
+            # 其次检查 content 中是否已有 HTML 答案块
             if 'geo-answer-block' in section_content:
-                logger.debug(f"Section {i+1} already has answer block, skipping")
+                logger.debug(f"Section {i+1} already has answer block in content, skipping")
                 continue
 
             # 生成直接答案块
             try:
                 answer_text = await self._generate_direct_answer(section_title, client)
+
+                # BUG-2修复: 同时写入单独字段供 quality_checker 读取
+                sections[i]["geoAnswerBlock"] = answer_text
 
                 # QUALITY-3修复: 升级为 Question+Answer Schema 配对
                 # 将 H2 标题转换为问题格式
@@ -389,13 +397,7 @@ class GEOOptimizer:
                 continue
 
         article["sections"] = sections
-
-        # 同时更新顶层 content 字段（如果存在）
-        if "content" in article:
-            combined = "\n\n".join(
-                s.get("content", "") for s in sections
-            )
-            article["content"] = combined
+        # 不要同步更新顶层 content，build_wordpress_html 从 sections 读取
 
         return article
 
@@ -581,8 +583,8 @@ Return the rewritten text."""
             if needs_optimization and client:
                 try:
                     # QUALITY-2修复: 调用LLM进行真正的重写
-                    rewritten_answer = asyncio.get_event_loop().run_until_complete(
-                        self._rewrite_faq_answer(question, answer, client)
+                    rewritten_answer = await self._rewrite_faq_answer(
+                        question, answer, client
                     )
                     if rewritten_answer:
                         answer = rewritten_answer

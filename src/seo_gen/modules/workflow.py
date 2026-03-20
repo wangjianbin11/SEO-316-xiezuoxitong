@@ -536,7 +536,13 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
             from seo_gen.modules.detection import ContentDetector
 
             detector = ContentDetector(reference_dir=Path("outputs"), use_online_detection=True)
-            content = article.get('content', '')
+            # BUG-1修复: 聚合所有 section 内容用于检测（article.get('content') 始终为空）
+            content = ' '.join(
+                s.get('content', '') for s in article.get('sections', [])
+            )
+            if not content.strip():
+                content = article.get('introduction', '') + ' ' + article.get('conclusion', '')
+            logger.info(f"[检测] 内容聚合完成，字符数: {len(content)}")
             detection_result = await detector.detect_all(content)
 
             result["stages"]["content_detection"] = {
@@ -705,7 +711,7 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
                     _faq_list_for_schema = article["faq"][:8]
 
                 schema_html = self.schema_generator.generate_all_schemas(
-                    article=article,
+                    article={**article, "featuredImage": {"url": cover_image_url or "", **(article.get("featuredImage") or {})}},
                     article_url=f"https://asgdropshipping.com/{result['slug']}/",
                     faq_list=_faq_list_for_schema,
                     category_name="Dropshipping",

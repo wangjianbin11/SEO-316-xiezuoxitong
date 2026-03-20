@@ -505,6 +505,17 @@ Primary Intent: {serp_analysis.get('primaryIntent', 'share')}
         context = self._build_context(keyword, serp_analysis, article_type)
         primary_intent = serp_analysis.get("primaryIntent", "share")
 
+        # BUG-FATAL修复: 加载文章类型专属 prompt 模板
+        type_template_content = ""
+        if article_type and article_type in self.prompt_templates:
+            type_template_content = self.prompt_templates[article_type]
+            if type_template_content:
+                logger.info(f"✓ 已加载 {article_type} 类型模板 ({len(type_template_content)} 字符)")
+            else:
+                logger.warning(f"⚠ {article_type} 模板为空，将使用默认提示")
+        else:
+            logger.warning(f"⚠ 未找到 {article_type} 类型模板，将使用默认提示")
+
         # 根据文章类型确定推荐的章节数量
         if article_type and article_type in ARTICLE_TYPE_SECTIONS:
             default_sections = ARTICLE_TYPE_SECTIONS[article_type]
@@ -808,7 +819,16 @@ REQUIREMENTS:
     - 每个答案65-100词（英文）
     - 第一句直接回答（Yes/No/具体数字/核心事实）
     - 包含至少1个具体数字，自成一体不引用"上文"
-    - JSON中使用faqSection.items字段"""
+    - JSON中使用faqSection.items字段
+
+================================================================================
+## ARTICLE TYPE SPECIFIC WRITING RULES (HIGHEST PRIORITY)
+## This article is type: {article_type or 'share'}
+## The following type-specific template OVERRIDES generic structure rules above.
+================================================================================
+{type_template_content if type_template_content else self._get_type_specific_instructions(article_type or 'share')}
+================================================================================
+"""
             },
             {
                 "role": "user",
@@ -902,6 +922,19 @@ Remember: The goal is to write like a real expert (Janson), not follow a templat
 
         # 验证关键词密度
         result = self._validate_keyword_density(result, keyword)
+
+        # OPTIMIZE-1: 如果密度严重偏离，在 result 中记录警告供 quality_checker 使用
+        meta = result.get("_meta", {})
+        if meta.get("density_warning"):
+            density = meta.get("keyword_density", 0)
+            if density > 0.015:
+                logger.warning(f"关键词密度过高 {density:.2%}，建议在 QualityChecker 中触发重写")
+                result["_quality_hints"] = result.get("_quality_hints", [])
+                result["_quality_hints"].append(f"keyword_density_too_high:{density:.4f}")
+            elif density < 0.008:
+                logger.warning(f"关键词密度过低 {density:.2%}")
+                result["_quality_hints"] = result.get("_quality_hints", [])
+                result["_quality_hints"].append(f"keyword_density_too_low:{density:.4f}")
 
         # 记录生成的章节数量和字数
         sections_count = len(result.get("sections", []))

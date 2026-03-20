@@ -340,6 +340,32 @@ class InternalLinkManager:
         else:
             return f'**{text}**'
 
+    async def _check_url_accessible(self, url: str) -> dict:
+        """
+        检查 URL 是否可访问 (BUG-5修复: 补全缺失方法)
+
+        Returns:
+            {"accessible": bool, "status": int, "content_length": int, "error": str}
+        """
+        try:
+            await self._init_http_client()
+            response = await self.http_client.head(url, timeout=REQUEST_TIMEOUT)
+            accessible = response.status_code < 400
+            content_length = int(response.headers.get('content-length', 0))
+            return {
+                "accessible": accessible,
+                "status": response.status_code,
+                "content_length": content_length,
+                "error": "" if accessible else f"HTTP {response.status_code}"
+            }
+        except Exception as e:
+            return {
+                "accessible": False,
+                "status": 0,
+                "content_length": 0,
+                "error": str(e)
+            }
+
     async def validate_links_with_check(self, links: list) -> dict:
         """
         验证所有链接的可访问性（新增：在生成链接后检测）

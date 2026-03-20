@@ -53,11 +53,23 @@ class ASGKnowledgeBase:
         """
         if knowledge_dir is None:
             vector_db_path = os.getenv('VECTOR_DB_PATH')
-            if vector_db_path and Path(vector_db_path).exists():
-                self.knowledge_dir = Path(vector_db_path)
-            else:
-                current_dir = Path(__file__).parent
-                self.knowledge_dir = current_dir.parent.parent.parent
+            current_dir = Path(__file__).parent
+
+            # OPTIMIZE-3: 智能路径查找，尝试多个候选路径
+            candidate_dirs = [
+                Path(vector_db_path) if vector_db_path else None,
+                Path.home() / "Documents" / "ASG-知识库" / "ASG-KB-FULL",
+                current_dir.parent.parent.parent / "ASG-KB-FULL",
+                current_dir.parent.parent.parent / "asg-kb-full",
+                current_dir.parent.parent.parent.parent / "ASG-KB-FULL",
+            ]
+
+            self.knowledge_dir = next(
+                (p for p in candidate_dirs if p and p.exists() and (p / "00-企业DNA").exists()),
+                current_dir.parent.parent.parent  # 最终回退
+            )
+            from loguru import logger as _init_logger
+            _init_logger.info(f"[ASGKnowledge] 知识库路径: {self.knowledge_dir}")
         else:
             self.knowledge_dir = Path(knowledge_dir)
 
