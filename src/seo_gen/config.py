@@ -217,6 +217,20 @@ class Settings(BaseSettings):
         default=5,
         description="LLM 最大RPM"
     )
+
+    # ==================== DataForSEO 配置 (关键词真实数据) ====================
+    dataforseo_username: Optional[str] = Field(
+        default=None,
+        description="DataForSEO 用户名(邮箱)"
+    )
+    dataforseo_password: Optional[str] = Field(
+        default=None,
+        description="DataForSEO API 密码"
+    )
+    dataforseo_location_code: int = Field(
+        default=2840,
+        description="DataForSEO 地区代码 (2840=US, 2826=UK)"
+    )
     image_max_concurrent: int = Field(
         default=1,
         description="图片生成最大并发数"

@@ -29,9 +29,18 @@ ARTICLE_TYPE_TEMPLATES = {
     "share": "share_post.md",
 }
 
-# ASG案例库路径（使用相对路径，避免硬编码）
+import os as _os
+
+# ASG案例库路径 - 优先从环境变量读取
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-ASG_CASE_LIBRARY_PATH = _PROJECT_ROOT / "asg-faq-matrix-geo_副本"
+
+# 从环境变量读取案例库路径（在.env里配置）
+_env_case = _os.getenv("ASG_CASE_LIBRARY_PATH", "")
+if _env_case and Path(_env_case).exists():
+    ASG_CASE_LIBRARY_PATH = Path(_env_case)
+else:
+    # 回退到相对路径
+    ASG_CASE_LIBRARY_PATH = _PROJECT_ROOT / "asg-faq-matrix-geo_副本"
 
 # 备选案例库路径
 ASG_CASE_LIBRARY_ALT_PATH = _PROJECT_ROOT / "asg-faq-matrix-geo"
@@ -480,6 +489,7 @@ Primary Intent: {serp_analysis.get('primaryIntent', 'share')}
         competitor_context: str = "",   # 新增：竞品分析上下文
         asg_context: str = "",         # BUG-3修复：ASG知识库上下文
         title: str = "",               # 新增：预确认的标题
+        lsi_keywords: list = None,   # 新增：LSI关键词列表
     ) -> dict[str, Any]:
         """
         生成完整文章（2500-3000词，纯英文，动态章节）
@@ -498,6 +508,10 @@ Primary Intent: {serp_analysis.get('primaryIntent', 'share')}
             raise ValueError("LLM client not configured")
 
         logger.info(f"Starting article generation: {keyword}, type: {article_type}")
+
+        # 处理 lsi_keywords 参数
+        if lsi_keywords is None:
+            lsi_keywords = []
 
         # 选择相关的ASG案例
         case_content = self._select_relevant_case(keyword, keyword)
@@ -832,7 +846,36 @@ REQUIREMENTS:
             },
             {
                 "role": "user",
-                "content": f"""Generate a complete, E-E-A-T optimized article for the keyword: "{keyword}"
+                "content": f"""
+╔════════════════════════════════════════════════════════════════════════════╗
+║  KEYWORD PLACEMENT CONTRACT - VIOLATING THIS = FAILURE                  ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+PRIMARY KEYWORD: "{keyword}"
+
+EXACT PLACEMENT RULES:
+✅ H1 title: appears EXACTLY ONCE (naturally embedded)
+✅ First paragraph (introduction): appears EXACTLY ONCE
+✅ Each H2 section: MAXIMUM once, only if it fits naturally
+✅ Conclusion: appears EXACTLY ONCE
+✅ Meta description: appears ONCE
+
+✅ Total density: 0.8% – 1.5% (for 3000 words: 24-45 occurrences max)
+
+❌ FORBIDDEN behaviors:
+- Repeating "{keyword}" in same H2 after the H2 title
+- Using "{keyword}" twice in same paragraph
+- Appending "{keyword}" to the END of H2 titles
+- Any sentence containing "{keyword}" more than once
+
+- Total density EXCEEDING 1.5% of word count
+
+INSTEAD OF REPEATING PRIMARY KEYWORD, USE THESE VARIANTS:
+{', '.join(lsi_keywords[:8]) if lsi_keywords else 'dropshipping fulfillment, supply chain management, e-commerce fulfillment, order processing automation'}
+
+╔════════════════════════════════════════════════════════════════════════════╝
+
+Generate a complete, E-E-A-T optimized article for the keyword: "{keyword}"
 
 Slug: {slug}
 Search Intent: {serp_analysis.get('searchIntent', 'informational')}
@@ -1042,12 +1085,31 @@ Each image should:
         link_manager = get_internal_link_manager()
         html_parts = []
 
-        # ========== 第一张图片放在文章最开头 ==========
-        if cover_image_url:
-            html_parts.append('<figure class="cover-image" style="margin: 0 0 2em 0;">')
-            html_parts.append(f'<img src="{cover_image_url}" alt="{article.get("title", "")}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;"/>')
-            html_parts.append('</figure>')
+        # ====================================================
+        # P1 修复: 封面图 — 始终放在文章最顶部
+        # ====================================================
+        # 优先使用上传后的 WordPress URL
+        # fallback: 使用文章 featuredImage 字段的 URL（如果 LLM 生成了占位URL）
+        # 如果都没有: 跳过（不插入破损的 <img>）
+
+        _cover_url = cover_image_url.strip() if cover_image_url else ""
+        if not _cover_url:
+            # 尝试从 article 数据中获取
+            _cover_url = article.get("featuredImage", {}).get("url", "").strip()
+
+        if _cover_url and _cover_url.startswith("http"):
+            _cover_alt = article.get("title", keyword or "ASG Dropshipping")
+            _cover_alt = _cover_alt.replace('"', "'")
+            html_parts.append(
+                f'<figure class="wp-block-image alignfull cover-image" '
+                f'style="margin:0 0 2.5em 0; max-width:100%;">'
+                f'<img src="{_cover_url}" alt="{_cover_alt}" '
+                f'style="width:100%; height:auto; display:block; border-radius:6px;" '
+                f'loading="eager" decoding="sync"/>'
+                f'</figure>'
+            )
             html_parts.append('')
+        # 如果 URL 无效，静默跳过，不插入空 figure
 
         # Introduction (BEFORE Key Takeaways)
         if article.get("introduction"):
@@ -1113,17 +1175,22 @@ Each image should:
             html_parts.append(f'<h2 id="{slug}">{title}</h2>')
 
             # Insert section image at the TOP of section (按顺序分配，不依赖sectionIndex)
+            # P2 修复: 过滤无效 URL，按顺序插入
             if _section_image_insert_idx < len(_section_image_keys):
                 img_key = _section_image_keys[_section_image_insert_idx]
                 img_url = section_images[img_key]
-                html_parts.append(f'<figure class="section-image" style="margin: 1em 0 2em 0;">')
-                # 优先使用LLM生成的具体alt text，回退到section标题
-                _section_image_meta = section.get("image") or {}
-                alt_text = _section_image_meta.get("alt", "") or f"{title} - {keyword or 'dropshipping'}"
-                alt_text = alt_text.replace('"', "'").strip()
-                html_parts.append(f'<img src="{img_url}" alt="{alt_text}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;"/>')
-                html_parts.append(f'<figcaption style="text-align: center; color: #666; font-size: 0.9em; margin-top: 0.5em;">{title}</figcaption>')
-                html_parts.append(f'</figure>')
+
+                # 过滤无效 URL
+                if img_url and img_url.strip().startswith("http"):
+                    html_parts.append(f'<figure class="wp-block-image aligncenter section-image" style="margin: 1em 0 2em 0;">')
+                    # 优先使用LLM生成的具体alt text，回退到section标题
+                    _section_image_meta = section.get("image") or {}
+                    alt_text = _section_image_meta.get("alt", "") or f"{title} - {keyword or 'dropshipping'}"
+                    alt_text = alt_text.replace('"', "'").strip()
+                    html_parts.append(f'<img src="{img_url}" alt="{alt_text}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" loading="lazy"/>')
+                    if _section_image_meta.get("caption"):
+                        html_parts.append(f'<figcaption style="text-align: center; color: #666; font-size: 0.9em; margin-top: 0.5em;">{_section_image_meta.get("caption")}</figcaption>')
+                    html_parts.append(f'</figure>')
                 _section_image_insert_idx += 1
 
             # Convert markdown to HTML with paragraph spacing
@@ -1136,34 +1203,76 @@ Each image should:
 
             html_parts.append(content_html)
 
-        # ========== Janson 固定结尾（作者介绍） ==========
+        # ====================================================
+        # P3 修复: 作者介绍 — Person Schema + 双栏布局 + onerror fallback
+        # ====================================================
         html_parts.append('<hr/>')
-        html_parts.append('<div class="author-bio" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2em; border-radius: 12px; margin: 2em 0; color: white;">')
+        html_parts.append('<div class="author-bio-block" itemscope itemtype="https://schema.org/Person" style="background:#f9fafb;padding:2em;border-radius:12px;margin:2em 0;display:flex;gap:2.5em;align-items:flex-start;">')
 
-        # 作者图片
-        html_parts.append('<div style="text-align: center; margin-bottom: 1.5em;">')
-        html_parts.append('<img src="https://asgdropshipping.com/wp-content/uploads/2024/01/janson-asg-ceo.png" alt="Janson - Founder & CEO of ASG Dropshipping" style="width: 120px; height: 120px; border-radius: 50%; border: 4px solid white; object-fit: cover;"/>')
+        # 左侧：头像
+        html_parts.append('<div style="flex-shrink:0;text-align:center;">')
+        # 使用 onerror fallback: 如果图片 404 则显示蓝色圆形背景 + 字母 "J"
+        html_parts.append('<img itemprop="image" src="https://asgdropshipping.com/wp-content/uploads/2024/01/janson-asg-ceo.png" alt="Janson - ASG Dropshipping CEO" style="width:120px;height:120px;border-radius:50%;border:4px solid white;object-fit:cover;" onerror="this.onerror=null;this.src=\'\';this.style=\'width:120px;height:120px;border-radius:50%;background:#2563eb;display:flex;align-items:center;justify-content:center;color:#fff;font-size:3rem;font-weight:bold;\'" />')
         html_parts.append('</div>')
 
-        # 作者介绍
-        html_parts.append('<div style="text-align: center;">')
-        html_parts.append('<h3 style="color: white; margin: 0 0 1em 0; font-size: 1.3em;">About the Author</h3>')
-        html_parts.append('<p style="line-height: 1.8; margin: 0; font-size: 1em;">')
-        html_parts.append('I am the Founder and CEO of <strong>ASG Dropshipping</strong>, a company that provides end-to-end supply chain and logistics services for global e-commerce sellers.')
+        # 右侧：作者信息
+        html_parts.append('<div style="flex:1;min-width:0;">')
+        html_parts.append('<p style="margin:0 0 0.5em 0;">')
+        html_parts.append('<span itemprop="name" style="font-weight:700;font-size:1.1em;color:#333;">ABOUT THE AUTHOR</span>')
         html_parts.append('</p>')
-        html_parts.append('<p style="line-height: 1.8; margin: 1em 0 0 0; font-size: 1em;">')
-        html_parts.append('With over <strong>8 years of experience</strong> in dropshipping and the Shopify ecosystem, I lead a team of more than <strong>200 professionals</strong>, working with over <strong>2,300 factories</strong> and managing a catalog of more than <strong>1.4 million products</strong>.')
+        html_parts.append('<p style="line-height:1.8;margin:0;font-size:1em;color:#444;">')
+        html_parts.append('I\'m the Founder and CEO of <strong>ASG Dropshipping</strong>, providing end-to-end supply chain and logistics services for global e-commerce sellers.')
         html_parts.append('</p>')
-        html_parts.append('<p style="line-height: 1.8; margin: 1em 0 0 0; font-size: 1em;">')
-        html_parts.append('I also serve as a guest professor at three universities in China, where I share practical insights on cross-border e-commerce, supply chain management, and global trade.')
+        html_parts.append('<p style="line-height:1.8;margin:0.8em 0 0 0;font-size:1em;color:#444;">')
+        html_parts.append('With <strong>8+ years in dropshipping</strong>, I lead a team of <strong>200+ professionals</strong>, working with <strong>2,300+ factories</strong> and a catalog of <strong>1.4M+ products</strong>.')
         html_parts.append('</p>')
-        html_parts.append('<p style="line-height: 1.8; margin: 1em 0 0 0; font-size: 1em; font-style: italic;">')
+        html_parts.append('<p style="line-height:1.8;margin:0.8em 0 0 0;font-size:1em;color:#444;">')
+        html_parts.append('I also serve as a guest professor at three universities in China, sharing practical insights on cross-border e-commerce and supply chain management.')
+        html_parts.append('</p>')
+        html_parts.append('<p style="line-height:1.8;margin:1em 0 0 0;font-size:1em;font-style:italic;color:#666;">')
         html_parts.append('Outside of business, I\'m a rock singer and guitarist who enjoys performing on stage.')
         html_parts.append('</p>')
         html_parts.append('</div>')
         html_parts.append('</div>')
 
-        # Sources Section (with descriptions)
+        # Person Schema JSON-LD (SEO/GEO优化)
+        html_parts.append('<script type="application/ld+json">')
+        html_parts.append('{')
+        html_parts.append('  "@context": "https://schema.org",')
+        html_parts.append('  "@type": "Person",')
+        html_parts.append('  "name": "Janson",')
+        html_parts.append('  "jobTitle": "Founder & CEO",')
+        html_parts.append('  "worksFor": {')
+        html_parts.append('    "@type": "Organization",')
+        html_parts.append('    "name": "ASG Dropshipping",')
+        html_parts.append('    "url": "https://asgdropshipping.com"')
+        html_parts.append('  },')
+        html_parts.append('  "description": "8+ years of experience in cross-border e-commerce, leading a team of 200+ professionals and working with 2,300+ factories.",')
+        html_parts.append('  "url": "https://asgdropshipping.com"')
+        html_parts.append('}')
+        html_parts.append('</script>')
+
+        # ========== FAQ 渲染 —— 用户可见 + Schema标记 ==========
+        faq_items = article.get("faqSection", {}).get("items", [])
+        if not faq_items:
+            faq_items = article.get("faq", [])
+        if faq_items:
+            html_parts.append('<hr/>')
+            html_parts.append('<div class="faq-section" itemscope itemtype="https://schema.org/FAQPage" style="margin: 2em 0;">')
+            html_parts.append('<h2 style="font-size: 1.5em; margin-bottom: 1em;">Frequently Asked Questions</h2>')
+            for faq in faq_items:
+                q = faq.get("question", faq.get("q", ""))
+                a = faq.get("answer", faq.get("a", ""))
+                if q and a:
+                    html_parts.append('<div itemscope itemprop="mainEntity" itemtype="https://schema.org/Question" style="margin-bottom: 1.5em;">')
+                    html_parts.append(f'<h3 itemprop="name" style="font-size: 1.1em; font-weight: 600; margin-bottom: 0.5em; color: #1a1a1a;">{q}</h3>')
+                    html_parts.append('<div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">')
+                    html_parts.append(f'<div itemprop="text" style="line-height: 1.7; color: #333;">{a}</div>')
+                    html_parts.append('</div>')
+                    html_parts.append('</div>')
+            html_parts.append('</div>')
+
+        # Sources Section (之前的位置, with descriptions)
         if article.get("sources"):
             html_parts.append('<hr/>')
             html_parts.append('<div class="sources">')

@@ -49,29 +49,45 @@ class ASGKnowledgeBase:
         初始化知识库
 
         Args:
-            knowledge_dir: 知识库根目录，默认从环境变量 VECTOR_DB_PATH 读取
+            knowledge_dir: 知识库根目录，优先从环境变量 ASG_KNOWLEDGE_BASE_PATH 读取
         """
-        if knowledge_dir is None:
-            vector_db_path = os.getenv('VECTOR_DB_PATH')
-            current_dir = Path(__file__).parent
-
-            # OPTIMIZE-3: 智能路径查找，尝试多个候选路径
-            candidate_dirs = [
-                Path(vector_db_path) if vector_db_path else None,
-                Path.home() / "Documents" / "ASG-知识库" / "ASG-KB-FULL",
-                current_dir.parent.parent.parent / "ASG-KB-FULL",
-                current_dir.parent.parent.parent / "asg-kb-full",
-                current_dir.parent.parent.parent.parent / "ASG-KB-FULL",
-            ]
-
-            self.knowledge_dir = next(
-                (p for p in candidate_dirs if p and p.exists() and (p / "00-企业DNA").exists()),
-                current_dir.parent.parent.parent  # 最终回退
-            )
-            from loguru import logger as _init_logger
-            _init_logger.info(f"[ASGKnowledge] 知识库路径: {self.knowledge_dir}")
-        else:
+        if knowledge_dir is not None:
             self.knowledge_dir = Path(knowledge_dir)
+        else:
+            # 优先从环境变量读取（在.env里配置）
+            env_path = os.getenv("ASG_KNOWLEDGE_BASE_PATH", "")
+
+            if env_path and Path(env_path).exists():
+                self.knowledge_dir = Path(env_path)
+            else:
+                # 尝试相对路径候选
+                current_dir = Path(__file__).parent
+                candidates = [
+                    Path.home() / "Documents" / "ASG-知识库" / "ASG-KB-FULL",
+                    current_dir.parent.parent.parent.parent / "ASG-KB-FULL",
+                    current_dir.parent.parent.parent.parent / "ASG知识库" / "ASG-KB-FULL",
+                ]
+                found = next(
+                    (p for p in candidates if p.exists() and (p / "00-企业DNA").exists()),
+                    None
+                )
+                if found:
+                    self.knowledge_dir = found
+                else:
+                    # 找不到时明确报错，不要用占位符！
+                    raise FileNotFoundError(
+                        f"[ASGKnowledge] 知识库未找到！\n"
+                        f"请在 .env 文件里设置：\n"
+                        f"ASG_KNOWLEDGE_BASE_PATH=/你的实际路径/ASG-KB-FULL\n"
+                        f"已尝试的路径：{candidates}"
+                    )
+
+        from loguru import logger as _logger
+        _logger.info(f"[ASGKnowledge] 知识库路径确认: {self.knowledge_dir}")
+
+        # 验证核心目录存在
+        if not (self.knowledge_dir / "00-企业DNA").exists():
+            _logger.warning(f"[ASGKnowledge] 警告：00-企业DNA目录不存在，可能影响文章质量")
 
         # ==================== 新版路径映射（ASG-KB-FULL） ====================
         self.dir_enterprise_dna = self.knowledge_dir / "00-企业DNA"
@@ -120,21 +136,41 @@ class ASGKnowledgeBase:
         return ""
 
     def get_janson_intro(self) -> str:
-        """获取 Janson 个人介绍"""
+        """获取 Janson 个人介绍 - 不返回占位符，缺失时报错"""
         if 'janson_intro' not in self._cache:
-            file_path = self.dir_enterprise_dna / "Janson创始人介绍.md"
-            if not file_path.exists():
-                file_path = self.dir_enterprise_dna / "janson_intro.md"
-            if not file_path.exists():
-                file_path = self.dir_enterprise_dna / "janson介绍.txt"
-            content = self._read_file(file_path)
-            if not content:
-                content = "Janson - ASG Dropshipping CEO & Founder. 8+ years in cross-border e-commerce."
+            # 按优先级尝试多个文件名
+            possible_files = [
+                "Janson创始人介绍.md",
+                "janson_intro.md",
+                "janson介绍.txt",
+                "创始人介绍.md",
+            ]
+            content = ""
+            loaded_file = None
+            for filename in possible_files:
+                file_path = self.dir_enterprise_dna / filename
+                if file_path.exists():
+                    content = self._read_file(file_path)
+                    if content:
+                        loaded_file = filename
+                        break
+
+            from loguru import logger as _l
+            if content:
+                _l.info(f"[ASGKnowledge] ✓ Janson介绍已加载: {loaded_file} ({len(content)}字符)")
+            else:
+                _l.error(
+                    f"[ASGKnowledge] ✗ Janson介绍文件未找到！"
+                    f"请在 {self.dir_enterprise_dna} 目录下创建以下任一文件：{possible_files}"
+                )
+                # 不返回占位符，返回空字符串，让调用方知道数据缺失
+                content = ""
+
             self._cache['janson_intro'] = content
         return self._cache['janson_intro']
 
     def get_company_intro(self) -> str:
-        """获取企业介绍"""
+        """获取企业介绍 - 不返回占位符"""
         if 'company_intro' not in self._cache:
             file_path = self.dir_enterprise_dna / "公司基本信息.md"
             if not file_path.exists():
@@ -142,8 +178,14 @@ class ASGKnowledgeBase:
             if not file_path.exists():
                 file_path = self.dir_enterprise_dna / "企业介绍.txt"
             content = self._read_file(file_path)
+
+            from loguru import logger as _l
             if not content:
-                content = "ASG Dropshipping - Professional dropshipping and fulfillment service provider."
+                _l.error(f"[ASGKnowledge] ✗ 企业介绍文件未找到！路径: {self.dir_enterprise_dna}")
+                content = ""  # 不返回占位符
+            else:
+                _l.info(f"[ASGKnowledge] ✓ 企业介绍已加载 ({len(content)}字符)")
+
             self._cache['company_intro'] = content
         return self._cache['company_intro']
 

@@ -433,8 +433,17 @@ class QualityChecker:
 
         scores["schema"] += 1  # BreadcrumbList基础分
 
-        # 内链检查(从content中统计)
-        internal_links = len(soup.find_all('a', href=True))
+        # 内链检查(同时检查HTML和Markdown格式链接)
+        html_links = len(soup.find_all('a', href=True))
+
+        # 同时统计Markdown格式的链接 [text](url)
+        full_text = self._extract_full_text(article)
+        import re
+        markdown_links = len(re.findall(r'\[([^\]]+)\]\(https?://[^\)]+\)', full_text))
+
+        internal_links = max(html_links, markdown_links)
+        self._log_detail(f"  链接统计: HTML={html_links}, Markdown={markdown_links}, 使用={internal_links}")
+
         if 3 <= internal_links <= 8:
             scores["internal_link"] = 5
             scores["passed"].append(f"内链数量适中({internal_links}个)")

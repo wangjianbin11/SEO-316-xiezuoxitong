@@ -4,6 +4,7 @@
 编排高级内容生成工作流
 """
 
+import os
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -187,23 +188,49 @@ class WorkflowOrchestrator:
             self._log("阶段0.5: 智能分类 - 加载知识库")
             self._log("=" * 50)
 
-            # 加载知识库
-            context = self.asg_knowledge.get_context_for_keyword(keyword)
-            result["knowledge_context"] = {
-                "janson_intro": bool(context.janson_intro),
-                "company_intro": bool(context.company_intro),
-                "customer_persona": bool(context.customer_persona),
-                "faq_count": len(context.faq_snippets),
-                "case_count": len(context.case_studies),
-                "geo_guidelines": bool(context.geo_guidelines),
-            }
-            self._log(f"✓ 知识库加载完成")
-            self._log(f"    - Janson 介绍: {'已加载' if context.janson_intro else '暂无'}")
-            self._log(f"    - 企业介绍: {'已加载' if context.company_intro else '暂无'}")
-            self._log(f"    - 客户画像: {'已加载' if context.customer_persona else '暂无'}")
-            self._log(f"    - 相关FAQ: {len(context.faq_snippets)} 个")
-            self._log(f"    - 相关案例: {len(context.case_studies)} 个")
-            self._log(f"    - GEO写作规范: {'已加载' if context.geo_guidelines else '暂无'}")
+            # 加载知识库（4-D: 加入失败检查和验证日志）
+            try:
+                context = self.asg_knowledge.get_context_for_keyword(keyword)
+                result["knowledge_context"] = {
+                    "janson_intro": bool(context.janson_intro),
+                    "company_intro": bool(context.company_intro),
+                    "customer_persona": bool(context.customer_persona),
+                    "faq_count": len(context.faq_snippets),
+                    "case_count": len(context.case_studies),
+                    "geo_guidelines": bool(context.geo_guidelines),
+                }
+
+                # 验证关键内容是否加载成功
+                if not context.janson_intro:
+                    self._log("  ⚠ [警告] Janson介绍未加载！文章Janson声音将不真实")
+                    self._log("  → 请检查 ASG_KNOWLEDGE_BASE_PATH 配置")
+                else:
+                    self._log(f"  ✓ Janson介绍已加载 ({len(context.janson_intro)}字符)")
+
+                if len(context.case_studies) == 0:
+                    self._log("  ⚠ [警告] 案例库为空！文章将缺乏真实案例数据")
+                else:
+                    self._log(f"  ✓ 相关案例已加载: {len(context.case_studies)}个")
+
+                self._log(f"✓ 知识库加载完成")
+                self._log(f"    - 企业介绍: {'已加载' if context.company_intro else '暂无'}")
+                self._log(f"    - 客户画像: {'已加载' if context.customer_persona else '暂无'}")
+                self._log(f"    - 相关FAQ: {len(context.faq_snippets)} 个")
+                self._log(f"    - GEO写作规范: {'已加载' if context.geo_guidelines else '暂无'}")
+
+                result["knowledge_status"] = {
+                    "janson_intro_loaded": bool(context.janson_intro),
+                    "company_intro_loaded": bool(context.company_intro),
+                    "case_studies_count": len(context.case_studies),
+                    "faq_snippets_count": len(context.faq_snippets),
+                }
+
+            except FileNotFoundError as e:
+                self._log(f"  ✗ [严重错误] 知识库路径未找到: {e}")
+                self._log("  → 请在 .env 文件里配置 ASG_KNOWLEDGE_BASE_PATH")
+                # 继续但标记为低质量
+                context = None
+                result["knowledge_status"] = {"error": str(e)}
 
             # ==================== 阶段1: 标题生成 ====================
             self._log("")
@@ -242,33 +269,97 @@ class WorkflowOrchestrator:
             self._log(f"✓ 搜索意图: {primary_intent}")
             self._update_step(1, "completed", "分析 SERP - 完成", 0.12)
 
-            # 1.1.3 关键词真实数据（DataForSEO）
+            # ==================== 1.1.3 DataForSEO 关键词扩展 ====================
+            lsi_keywords = []
+            keyword_metrics = {}
+
             if self.keyword_data_client.enabled:
                 try:
-                    _kw_list = await self.keyword_data_client.get_keyword_metrics([keyword])
-                    if _kw_list:
-                        _m = _kw_list[0]
-                        result["keyword_metrics"] = {
-                            "monthly_volume": _m.monthly_volume,
-                            "kd_score": _m.kd_score,
-                            "cpc": _m.cpc,
-                            "competition": _m.competition_level,
-                            "source": _m.data_source,
+                    self._log(f"[DataForSEO] 正在获取关键词数据和长尾词...")
+
+                    # 1. 获取主关键词数据
+                    main_kw_data = await self.keyword_data_client.get_keyword_metrics(
+                        [keyword],
+                        location_code=settings.dataforseo_location_code
+                    )
+                    if main_kw_data:
+                        m = main_kw_data[0]
+                        keyword_metrics = {
+                            "monthly_volume": m.monthly_volume,
+                            "kd_score": m.kd_score,
+                            "cpc": m.cpc,
+                            "competition": m.competition_level,
                         }
-                        self._log(f"✓ 关键词数据: 搜索量={_m.monthly_volume}/月 KD={_m.kd_score:.0f} CPC=${_m.cpc:.2f}")
-                except Exception as _e:
-                    self._log(f"  ℹ️  DataForSEO获取失败（不影响流程）: {_e}")
+                        self._log(
+                            f"  ✓ 主词数据: 搜索量={m.monthly_volume}/月 "
+                            f"KD={m.kd_score:.0f} CPC=${m.cpc:.2f} "
+                            f"竞争={m.competition_level}"
+                        )
+
+                    # 2. 获取相关长尾词（这些才是真正有价值的部分）
+                    related_candidates = [
+                        f"{keyword} guide",
+                        f"{keyword} tips",
+                        f"best {keyword}",
+                        f"how to {keyword}",
+                        f"{keyword} for shopify",
+                        f"{keyword} china",
+                        f"{keyword} supplier",
+                        f"{keyword} service",
+                    ]
+
+                    related_data = await self.keyword_data_client.get_keyword_metrics(
+                        related_candidates,
+                        location_code=settings.dataforseo_location_code
+                    )
+
+                    # 筛选：KD < 55 且 搜索量 > 100 的词才保留
+                    lsi_keywords_scored = sorted(
+                        [(m.keyword, m.monthly_volume) for m in related_data
+                         if m.kd_score < 55 and m.monthly_volume > 100],
+                        key=lambda x: x[1],
+                        reverse=True
+                    )
+                    lsi_keywords = [k for k, v in lsi_keywords_scored[:8]]
+
+                    self._log(f"  ✓ LSI关键词({len(lsi_keywords)}个): {', '.join(lsi_keywords[:5])}")
+
+                    result["keyword_metrics"] = keyword_metrics
+                    result["lsi_keywords"] = lsi_keywords
+
+                except Exception as e:
+                    self._log(f"  ⚠ DataForSEO失败(不影响流程): {e}")
+                    lsi_keywords = []
             else:
-                self._log("  ℹ️  DataForSEO未配置，跳过关键词数据")
+                self._log("  ℹ DataForSEO未配置，使用通用LSI词")
+                # 根据关键词自动推断基础LSI词
+                lsi_keywords = [
+                    f"{keyword} service",
+                    f"{keyword} guide",
+                    f"best {keyword}",
+                    f"{keyword} tips",
+                    "dropshipping fulfillment",
+                    "supply chain management",
+                    "e-commerce fulfillment",
+                    "order processing automation",
+                ]
 
             # 1.1.5 竞争对手内容分析（新增）
             self._log(f"[1.5/11] 正在分析竞争对手内容...")
-            # BUG-1修复: Google Custom Search API 返回的字段是 "searchResults" 不是 "results"，链接字段是 "link" 不是 "url"
-            top_urls = [
-                r.get("link") or r.get("url")
-                for r in serp_data.get("searchResults", [])[:5]
-                if r.get("link") or r.get("url")
-            ]
+            # 修复: 更健壮的竞品URL提取 + 验证日志
+            raw_results = serp_data.get("searchResults", [])
+            top_urls = []
+            for r in raw_results[:8]:  # 多取几个，防止过滤后不足5个
+                url = r.get("link", "").strip()
+                if url and url.startswith("http"):
+                    top_urls.append(url)
+                if len(top_urls) >= 5:
+                    break
+
+            self._log(f"  竞品URL列表({len(top_urls)}个): {top_urls[:3]}")
+
+            if len(top_urls) < 3:
+                self._log(f"  ⚠ 竞品URL不足3个，请检查Google API是否正常返回结果")
             _paa_questions = serp_data.get("serpAnalysis", {}).get("paaQuestions", [])
             try:
                 competitor_analysis = await self.competitor_scraper.analyze_competitors(
@@ -438,6 +529,7 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
                 competitor_context=competitor_context,
                 asg_context=asg_context,  # BUG-3修复: 传递ASG知识库上下文
                 title=final_title,  # 新增：传入TitleGenerator选出的最佳标题
+                lsi_keywords=lsi_keywords,  # 4-C: 传入LSI关键词用于关键词变体布局
             )
             result["stages"]["content_generation"] = {
                 "status": "completed",
@@ -470,8 +562,59 @@ COMPETITOR ANALYSIS INSIGHTS (从真实竞品文章提取，必须参考):
             }
             score = quality_result.get('overallScore', 0)
             grade = quality_result.get('overallGrade', 'N/A')
-            self._log(f"✓ 质量检测: {score}/100 ({grade})")
+            critical_issues = quality_result.get('criticalIssues', [])
+            self._log(f"✓ 质量检测初稿: {score}/100 ({grade})")
+
+            # 4-E: 低分重写逻辑（最多重写1次）
+            MIN_ACCEPTABLE_SCORE = int(os.getenv("MIN_PUBLISH_SCORE", "75"))
+            if score < MIN_ACCEPTABLE_SCORE and critical_issues:
+                self._log(f"  ⚠ 分数 {score} 低于 {MIN_ACCEPTABLE_SCORE}，触发重写...")
+                self._log(f"  关键问题: {critical_issues[:3]}")
+
+                # 构建改进提示
+                improvement_prompt = (
+                    f"The article scored {score}/100. "
+                    f"Critical issues to fix: {'; '.join(critical_issues[:5])}. "
+                    f"Please rewrite focusing on: "
+                    f"1) Adding specific numbers/data in each section, "
+                    f"2) Making each H2 open with a direct answer to the implied question, "
+                    f"3) Ensuring FAQ section has 6-8 complete answers (65-100 words each)."
+                )
+
+                try:
+                    # 重新生成（传入改进提示）
+                    article_v2 = await self.content_generator.generate_article(
+                        keyword=keyword,
+                        slug=result["slug"],
+                        serp_analysis=serp_analysis_for_content,
+                        structure_analysis=structure_analysis,
+                        article_type=article_type.value,
+                        competitor_context=competitor_context + f"\n\n{improvement_prompt}",
+                        asg_context=asg_context,
+                        title=final_title,
+                        lsi_keywords=lsi_keywords,
+                    )
+
+                    # 重新检测
+                    quality_v2 = await self.quality_checker.check_article_quality(
+                        article=article_v2,
+                        keyword=keyword,
+                    )
+                    score_v2 = quality_v2.get('overallScore', 0)
+
+                    if score_v2 > score:
+                        self._log(f"  ✓ 重写后分数提升: {score} → {score_v2}")
+                        article = article_v2
+                        quality_result = quality_v2
+                        score = score_v2
+                        grade = quality_v2.get('overallGrade', 'N/A')
+                    else:
+                        self._log(f"  ℹ 重写未提升分数({score_v2})，保留原版({score})")
+                except Exception as rewrite_err:
+                    self._log(f"  ⚠ 重写失败: {rewrite_err}，继续使用原版")
+
             self._update_step(6, "completed", f"质量检测 - {score}/100", 0.85)
+            result["quality_warning"] = score < MIN_ACCEPTABLE_SCORE
 
             # 2.5.4 禁用词重写（uncitable sentence检测，代码已写但从未调用）
             self._log(f"[7.2/11] 检测并重写AI无法引用的表达...")
